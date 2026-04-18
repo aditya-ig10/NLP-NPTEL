@@ -277,6 +277,74 @@
     font-weight: 700;
   }
 
+  .lab-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+  .num-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: var(--border);
+    background: #fff;
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+  }
+  .calc-btn {
+    border: var(--border);
+    background: var(--black);
+    color: var(--yellow);
+    font-family: 'Bebas Neue', sans-serif;
+    letter-spacing: 1px;
+    font-size: 24px;
+    padding: 10px 18px;
+    cursor: none;
+  }
+  .result-box {
+    border: var(--border);
+    background: var(--white);
+    padding: 12px;
+    margin-top: 12px;
+    font-size: 13px;
+    line-height: 1.8;
+  }
+  .feature-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .feature-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    border: var(--border);
+    background: #fff;
+    padding: 10px 12px;
+    font-size: 12px;
+    font-weight: 700;
+  }
+  .feature-row input[type="checkbox"] {
+    transform: scale(1.2);
+  }
+  .bar-wrap {
+    border: var(--border);
+    background: #fff;
+    height: 24px;
+    margin-top: 6px;
+    position: relative;
+  }
+  .bar-fill {
+    background: var(--blue);
+    height: 100%;
+    width: 0;
+    transition: width .2s;
+  }
+  .bar-fill.alt {
+    background: var(--green);
+  }
+
   .fc-container {
     display: flex;
     flex-direction: column;
@@ -440,10 +508,11 @@
   <button class="nav-btn active" onclick="scrollToSec('#hmm')">01 HMM & VITERBI</button>
   <button class="nav-btn" onclick="scrollToSec('#learning')">02 LEARNING</button>
   <button class="nav-btn" onclick="scrollToSec('#maxent')">03 MAXENT</button>
-  <button class="nav-btn" onclick="scrollToSec('#beam')">04 BEAM SEARCH</button>
-  <button class="nav-btn" onclick="scrollToSec('#compare')">05 HMM VS CRF</button>
-  <button class="nav-btn" onclick="scrollToSec('#flashcards')">06 FLASHCARDS</button>
-  <button class="nav-btn" onclick="scrollToSec('#quiz')">07 QUIZ</button>
+  <button class="nav-btn" onclick="scrollToSec('#labs')">04 INTERACTIVE LABS</button>
+  <button class="nav-btn" onclick="scrollToSec('#beam')">05 BEAM SEARCH</button>
+  <button class="nav-btn" onclick="scrollToSec('#compare')">06 HMM VS CRF</button>
+  <button class="nav-btn" onclick="scrollToSec('#flashcards')">07 FLASHCARDS</button>
+  <button class="nav-btn" onclick="scrollToSec('#quiz')">08 QUIZ</button>
 </nav>
 
 <section class="section" id="hmm">
@@ -549,8 +618,56 @@ beta_i(t) = sum_j beta_j(t+1)a_ijb_j(y_t+1)</div>
   </div>
 </section>
 
+<section class="section" id="labs">
+  <div class="section-label">04 — INTERACTIVE COMPONENTS</div>
+  <h2 class="section-title">WEEK 4<br>INTERACTIVE<br>LABS</h2>
+
+  <div class="lab-grid">
+    <div class="card card-yellow">
+      <div class="section-label">VITERBI ONE-STEP CALCULATOR</div>
+      <p style="font-size:13px;line-height:1.8;">Compute one Viterbi step for two previous states (N,V) and two current states (N,V).</p>
+      <div class="grid-2" style="margin-top:12px;">
+        <div><input class="num-input" id="deltaN" type="number" step="0.01" value="0.60" aria-label="deltaN"></div>
+        <div><input class="num-input" id="deltaV" type="number" step="0.01" value="0.40" aria-label="deltaV"></div>
+      </div>
+      <div class="grid-2" style="margin-top:10px;">
+        <div><input class="num-input" id="aNN" type="number" step="0.01" value="0.70" aria-label="aNN"></div>
+        <div><input class="num-input" id="aVN" type="number" step="0.01" value="0.30" aria-label="aVN"></div>
+      </div>
+      <div class="grid-2" style="margin-top:10px;">
+        <div><input class="num-input" id="aNV" type="number" step="0.01" value="0.40" aria-label="aNV"></div>
+        <div><input class="num-input" id="aVV" type="number" step="0.01" value="0.60" aria-label="aVV"></div>
+      </div>
+      <div class="grid-2" style="margin-top:10px;">
+        <div><input class="num-input" id="bN" type="number" step="0.01" value="0.50" aria-label="bN"></div>
+        <div><input class="num-input" id="bV" type="number" step="0.01" value="0.80" aria-label="bV"></div>
+      </div>
+      <button class="calc-btn" style="margin-top:12px;" onclick="runViterbiStep()">COMPUTE STEP</button>
+      <div class="result-box" id="viterbi-out"></div>
+    </div>
+
+    <div class="card card-blue">
+      <div class="section-label">MAXENT FEATURE SCORER</div>
+      <p style="font-size:13px;line-height:1.8;">Toggle active features and compare probabilities for tags NNP vs NN using softmax.</p>
+      <div class="feature-list">
+        <label class="feature-row"><span>Capitalized word</span><input type="checkbox" class="mx-feat" data-nnp="1.3" data-nn="0.1" checked></label>
+        <label class="feature-row"><span>Suffix = ing</span><input type="checkbox" class="mx-feat" data-nnp="0.1" data-nn="0.9"></label>
+        <label class="feature-row"><span>Prev word = the</span><input type="checkbox" class="mx-feat" data-nnp="0.1" data-nn="1.1"></label>
+        <label class="feature-row"><span>Prev tag = DET</span><input type="checkbox" class="mx-feat" data-nnp="0.2" data-nn="1.0"></label>
+      </div>
+      <button class="calc-btn" style="margin-top:12px;" onclick="runMaxentLab()">SCORE TAGS</button>
+      <div class="result-box">
+        <div>NNP probability: <strong id="mx-nnp">0.00</strong></div>
+        <div class="bar-wrap"><div class="bar-fill" id="mx-bar-nnp"></div></div>
+        <div style="margin-top:8px;">NN probability: <strong id="mx-nn">0.00</strong></div>
+        <div class="bar-wrap"><div class="bar-fill alt" id="mx-bar-nn"></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <section class="section" id="beam">
-  <div class="section-label">04 — APPROXIMATE DECODING</div>
+  <div class="section-label">05 — APPROXIMATE DECODING</div>
   <h2 class="section-title">BEAM SEARCH</h2>
 
   <div class="card card-blue">
@@ -569,7 +686,7 @@ beta_i(t) = sum_j beta_j(t+1)a_ijb_j(y_t+1)</div>
 </section>
 
 <section class="section" id="compare">
-  <div class="section-label">05 — MODEL COMPARISON</div>
+  <div class="section-label">06 — MODEL COMPARISON</div>
   <h2 class="section-title">HMM vs MAXENT<br>vs CRF</h2>
 
   <div class="grid-3">
@@ -590,11 +707,20 @@ beta_i(t) = sum_j beta_j(t+1)a_ijb_j(y_t+1)</div>
   <div class="card card-black" style="margin-top:20px;">
     <div class="section-label" style="color:var(--red)">LABEL BIAS PROBLEM</div>
     <p style="line-height:1.9;font-size:14px;color:rgba(255,255,255,0.9);">Locally normalized models can overly prefer states with fewer outgoing transitions. CRFs compare complete paths globally to reduce this bias.</p>
+    <div style="margin-top:14px;font-size:12px;color:#fff;opacity:.9;">Local-normalized state A share: <span id="lb-a-val">0.80</span></div>
+    <input id="lb-a" type="range" min="10" max="95" value="80" oninput="runLabelBiasLab()" style="width:100%;margin-top:6px;">
+    <div style="margin-top:10px;font-size:12px;color:#fff;opacity:.9;">Local-normalized state B share: <span id="lb-b-val">0.55</span></div>
+    <input id="lb-b" type="range" min="10" max="95" value="55" oninput="runLabelBiasLab()" style="width:100%;margin-top:6px;">
+    <div class="result-box" style="margin-top:12px;background:#fff;color:#0a0a0a;">
+      <div>Path score via state A: <strong id="lb-path-a">0.00</strong></div>
+      <div>Path score via state B: <strong id="lb-path-b">0.00</strong></div>
+      <div style="margin-top:6px;">Higher local certainty can dominate even if global evidence is weak.</div>
+    </div>
   </div>
 </section>
 
 <section class="section" id="flashcards" style="background:var(--black);color:var(--white);">
-  <div class="section-label" style="color:var(--yellow)">06 — RECALL</div>
+  <div class="section-label" style="color:var(--yellow)">07 — RECALL</div>
   <h2 class="section-title" style="color:var(--white);">FLASH<br>CARDS</h2>
   <p style="font-family:'Syne',sans-serif;font-size:16px;color:rgba(245,240,232,0.6);margin-bottom:40px;">Click card to flip. Use arrows to browse Week 4 terms.</p>
 
@@ -619,7 +745,7 @@ beta_i(t) = sum_j beta_j(t+1)a_ijb_j(y_t+1)</div>
 </section>
 
 <section class="section" id="quiz">
-  <div class="section-label">07 — TEST YOURSELF</div>
+  <div class="section-label">08 — TEST YOURSELF</div>
   <h2 class="section-title">QUICK<br>QUIZ</h2>
 
   <div class="score-bar" id="score-bar"></div>
@@ -653,7 +779,7 @@ function scrollToSec(sel) {
   if (el) el.scrollIntoView({behavior:'smooth'});
 }
 
-const sections = ['hmm','learning','maxent','beam','compare','flashcards','quiz'];
+const sections = ['hmm','learning','maxent','labs','beam','compare','flashcards','quiz'];
 const navBtns = document.querySelectorAll('.nav-btn');
 window.addEventListener('scroll', () => {
   let cur = '';
@@ -669,6 +795,73 @@ function showAlgo(id) {
   document.querySelectorAll('.algo-btn').forEach(b => b.classList.remove('on'));
   document.getElementById('algo-' + id).classList.add('show');
   if (event && event.target) event.target.classList.add('on');
+}
+
+function readNum(id, fallback) {
+  const v = Number(document.getElementById(id).value);
+  return Number.isFinite(v) ? v : fallback;
+}
+
+function runViterbiStep() {
+  const dN = readNum('deltaN', 0.6);
+  const dV = readNum('deltaV', 0.4);
+  const aNN = readNum('aNN', 0.7);
+  const aVN = readNum('aVN', 0.3);
+  const aNV = readNum('aNV', 0.4);
+  const aVV = readNum('aVV', 0.6);
+  const bN = readNum('bN', 0.5);
+  const bV = readNum('bV', 0.8);
+
+  const scoreNfromN = dN * aNN * bN;
+  const scoreNfromV = dV * aVN * bN;
+  const scoreVfromN = dN * aNV * bV;
+  const scoreVfromV = dV * aVV * bV;
+
+  const bestN = Math.max(scoreNfromN, scoreNfromV);
+  const bestV = Math.max(scoreVfromN, scoreVfromV);
+  const psiN = scoreNfromN >= scoreNfromV ? 'N' : 'V';
+  const psiV = scoreVfromN >= scoreVfromV ? 'N' : 'V';
+
+  document.getElementById('viterbi-out').innerHTML =
+    `delta(N)=${bestN.toFixed(4)} via ${psiN}<br>` +
+    `delta(V)=${bestV.toFixed(4)} via ${psiV}<br>` +
+    `Best current state: <strong>${bestN >= bestV ? 'N' : 'V'}</strong>`;
+}
+
+function runMaxentLab() {
+  const features = document.querySelectorAll('.mx-feat');
+  let nnpScore = 0.0;
+  let nnScore = 0.0;
+  features.forEach(f => {
+    if (f.checked) {
+      nnpScore += Number(f.dataset.nnp);
+      nnScore += Number(f.dataset.nn);
+    }
+  });
+
+  const eNnp = Math.exp(nnpScore);
+  const eNn = Math.exp(nnScore);
+  const z = eNnp + eNn;
+  const pNnp = eNnp / z;
+  const pNn = eNn / z;
+
+  document.getElementById('mx-nnp').textContent = pNnp.toFixed(3);
+  document.getElementById('mx-nn').textContent = pNn.toFixed(3);
+  document.getElementById('mx-bar-nnp').style.width = `${Math.round(pNnp * 100)}%`;
+  document.getElementById('mx-bar-nn').style.width = `${Math.round(pNn * 100)}%`;
+}
+
+function runLabelBiasLab() {
+  const a = Number(document.getElementById('lb-a').value) / 100;
+  const b = Number(document.getElementById('lb-b').value) / 100;
+  const globalA = 0.45;
+  const globalB = 0.62;
+  const pathA = a * globalA;
+  const pathB = b * globalB;
+  document.getElementById('lb-a-val').textContent = a.toFixed(2);
+  document.getElementById('lb-b-val').textContent = b.toFixed(2);
+  document.getElementById('lb-path-a').textContent = pathA.toFixed(3);
+  document.getElementById('lb-path-b').textContent = pathB.toFixed(3);
 }
 
 function runBeamDemo() {
@@ -793,6 +986,9 @@ function restartQuiz() {
 
 updateCard();
 initQuiz();
+runViterbiStep();
+runMaxentLab();
+runLabelBiasLab();
 </script>
 </body>
 </html>
