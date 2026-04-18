@@ -1,0 +1,853 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NLP Week 3 — Smoothing & Morphology</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --black: #0a0a0a;
+    --white: #f5f0e8;
+    --yellow: #FFE600;
+    --red: #FF2D55;
+    --blue: #00C8FF;
+    --green: #00FF88;
+    --purple: #BF5FFF;
+    --orange: #FF6B00;
+    --border: 3px solid var(--black);
+    --shadow: 6px 6px 0 var(--black);
+    --shadow-lg: 10px 10px 0 var(--black);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--white);
+    color: var(--black);
+    font-family: 'Space Mono', monospace;
+    overflow-x: hidden;
+    cursor: none;
+  }
+
+  .cursor {
+    position: fixed;
+    width: 20px; height: 20px;
+    background: var(--yellow);
+    border: 3px solid var(--black);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%);
+    transition: transform 0.1s, background 0.2s, width 0.2s, height 0.2s;
+  }
+  .cursor.big {
+    width: 40px; height: 40px;
+    background: var(--red);
+  }
+
+  body::before {
+    content:'';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    background-size: 200px;
+    pointer-events: none;
+    z-index: 1000;
+    opacity: 0.5;
+  }
+
+  .hero {
+    min-height: 100vh;
+    background: var(--black);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 60px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,230,0,0.07) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,230,0,0.07) 1px, transparent 1px);
+    background-size: 60px 60px;
+    animation: gridMove 20s linear infinite;
+  }
+  @keyframes gridMove { from { background-position:0 0; } to { background-position:60px 60px; } }
+  .hero-tag {
+    font-size: 13px;
+    background: var(--yellow);
+    color: var(--black);
+    padding: 6px 14px;
+    border: var(--border);
+    border-color: var(--yellow);
+    font-weight: 700;
+    letter-spacing: 3px;
+    margin-bottom: 30px;
+    display: inline-block;
+  }
+  .hero h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(70px, 12vw, 180px);
+    color: var(--white);
+    line-height: 0.9;
+    letter-spacing: -2px;
+  }
+  .hero h1 span { color: var(--yellow); }
+  .hero-sub {
+    font-family: 'Syne', sans-serif;
+    font-size: 20px;
+    color: rgba(245,240,232,0.6);
+    margin-top: 20px;
+    max-width: 660px;
+  }
+  .hero-deco {
+    position: absolute;
+    right: -50px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 300px;
+    color: rgba(255,230,0,0.05);
+    pointer-events: none;
+    letter-spacing: -10px;
+  }
+  .scroll-hint {
+    position: absolute;
+    bottom: 30px;
+    left: 60px;
+    color: var(--yellow);
+    font-size: 12px;
+    letter-spacing: 3px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .scroll-hint::before {
+    content:'';
+    display:block;
+    width:40px;
+    height:2px;
+    background: var(--yellow);
+  }
+
+  .marquee-wrap {
+    overflow: hidden;
+    border-top: var(--border);
+    border-bottom: var(--border);
+    background: var(--yellow);
+    padding: 14px 0;
+  }
+  .marquee-track {
+    display: flex;
+    gap: 40px;
+    white-space: nowrap;
+    animation: marquee 18s linear infinite;
+    width: max-content;
+  }
+  @keyframes marquee { from { transform:translateX(0); } to { transform:translateX(-50%); } }
+  .marquee-item {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    letter-spacing: 3px;
+    color: var(--black);
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+  .marquee-item::after { content:'◆'; font-size: 12px; }
+
+  .nav {
+    position: sticky;
+    top: 0;
+    z-index: 500;
+    background: var(--black);
+    border-bottom: var(--border);
+    border-color: var(--yellow);
+    display: flex;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .nav::-webkit-scrollbar { display:none; }
+  .nav-btn {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: rgba(245,240,232,0.5);
+    padding: 16px 24px;
+    border: none;
+    background: transparent;
+    cursor: none;
+    white-space: nowrap;
+    border-right: 1px solid rgba(255,230,0,0.2);
+    text-transform: uppercase;
+  }
+  .nav-btn:hover, .nav-btn.active { color: var(--yellow); background: rgba(255,230,0,0.08); }
+
+  .section {
+    padding: 80px 60px;
+    border-bottom: var(--border);
+    position: relative;
+  }
+  .section-label {
+    font-size: 11px;
+    letter-spacing: 4px;
+    color: var(--red);
+    font-weight: 700;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+  }
+  .section-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(42px, 6vw, 80px);
+    line-height: 1;
+    margin-bottom: 36px;
+    letter-spacing: 1px;
+  }
+
+  .card {
+    background: var(--white);
+    border: var(--border);
+    box-shadow: var(--shadow);
+    padding: 28px;
+    transition: transform 0.15s, box-shadow 0.15s;
+    position: relative;
+  }
+  .card:hover { transform: translate(-3px, -3px); box-shadow: 9px 9px 0 var(--black); }
+  .card-yellow { background: var(--yellow); }
+  .card-red { background: var(--red); color: var(--white); }
+  .card-blue { background: var(--blue); }
+  .card-green { background: var(--green); }
+  .card-black { background: var(--black); color: var(--white); }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .grid-auto { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
+
+  .model-switch {
+    display: flex;
+    border: var(--border);
+    width: fit-content;
+    margin-bottom: 24px;
+  }
+  .model-btn {
+    font-family: 'Syne', sans-serif;
+    font-size: 15px;
+    font-weight: 800;
+    padding: 14px 26px;
+    border: none;
+    border-right: var(--border);
+    background: var(--white);
+    cursor: none;
+  }
+  .model-btn:last-child { border-right: none; }
+  .model-btn.on { background: var(--black); color: var(--yellow); }
+  .model-panel { display: none; }
+  .model-panel.show { display: block; }
+
+  .formula {
+    background: var(--black);
+    color: var(--green);
+    padding: 20px;
+    border: var(--border);
+    font-size: 14px;
+    line-height: 1.8;
+    overflow-x: auto;
+  }
+
+  .lambda-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    align-items: end;
+  }
+  .lambda-ctrl label {
+    display:block;
+    font-size:11px;
+    letter-spacing:2px;
+    font-weight:700;
+    margin-bottom:6px;
+  }
+  .lambda-ctrl input {
+    width: 180px;
+  }
+  .score {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 44px;
+    border: var(--border);
+    background: var(--yellow);
+    padding: 8px 20px;
+    line-height: 1;
+  }
+
+  .pill {
+    display: inline-block;
+    border: var(--border);
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 700;
+    margin: 6px 8px 0 0;
+    background: var(--white);
+  }
+
+  .fc-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+  }
+  .fc-wrapper {
+    width: 100%;
+    max-width: 600px;
+    height: 280px;
+    perspective: 1000px;
+    cursor: none;
+  }
+  .fc-inner {
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+    transition: transform 0.6s cubic-bezier(0.34,1.56,0.64,1);
+    position: relative;
+  }
+  .fc-inner.flipped { transform: rotateY(180deg); }
+  .fc-front, .fc-back {
+    position: absolute;
+    inset: 0;
+    border: 3px solid var(--yellow);
+    box-shadow: 8px 8px 0 var(--yellow);
+    backface-visibility: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    text-align: center;
+  }
+  .fc-front { background: var(--black); }
+  .fc-back { background: var(--yellow); color: var(--black); transform: rotateY(180deg); }
+  .fc-term { font-family: 'Bebas Neue', sans-serif; font-size: 42px; letter-spacing: 2px; line-height: 1.1; }
+  .fc-def { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; line-height: 1.4; }
+  .fc-hint { font-size: 12px; opacity: 0.5; letter-spacing: 2px; margin-top: 20px; text-transform: uppercase; }
+  .fc-controls { display: flex; gap: 12px; align-items: center; }
+  .fc-ctrl-btn {
+    padding: 10px 18px;
+    border: var(--border);
+    background: var(--white);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    cursor: none;
+  }
+  .fc-progress {
+    border: var(--border);
+    padding: 8px 14px;
+    font-weight: 700;
+    background: var(--yellow);
+  }
+
+  #quiz { background: var(--yellow); }
+  .quiz-card {
+    background: var(--white);
+    border: var(--border);
+    box-shadow: var(--shadow-lg);
+    padding: 40px;
+    max-width: 760px;
+    margin: 0 auto;
+  }
+  .q-text { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 700; margin-bottom: 30px; line-height: 1.4; }
+  .q-number { font-family: 'Bebas Neue', sans-serif; font-size: 14px; letter-spacing: 3px; color: var(--red); margin-bottom: 10px; display: block; }
+  .q-options { display: flex; flex-direction: column; gap: 12px; }
+  .q-opt {
+    font-family: 'Space Mono', monospace;
+    font-size: 15px;
+    padding: 16px 20px;
+    border: var(--border);
+    background: var(--white);
+    cursor: none;
+    text-align: left;
+    font-weight: 700;
+  }
+  .q-opt:hover { background: var(--black); color: var(--yellow); }
+  .q-opt.correct { background: var(--green) !important; color: var(--black) !important; }
+  .q-opt.wrong { background: var(--red) !important; color: white !important; }
+  .q-feedback { margin-top: 20px; padding: 20px; border: var(--border); font-size: 14px; line-height: 1.6; display: none; }
+  .q-feedback.show { display: block; }
+  .next-btn {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 24px;
+    letter-spacing: 2px;
+    padding: 14px 40px;
+    background: var(--black);
+    color: var(--yellow);
+    border: var(--border);
+    cursor: none;
+    margin-top: 20px;
+    display: none;
+  }
+  .next-btn.show { display: inline-block; }
+
+  .score-bar { display: flex; gap: 8px; margin-bottom: 20px; justify-content: center; }
+  .score-dot { width: 20px; height: 20px; border: var(--border); background: var(--white); }
+  .score-dot.done { background: var(--black); }
+  .score-dot.correct { background: var(--green); }
+  .score-dot.wrong { background: var(--red); }
+
+  footer {
+    background: var(--black);
+    border-top: var(--border);
+    border-color: var(--yellow);
+    padding: 40px 60px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 20px;
+  }
+  footer .f-logo { font-family: 'Bebas Neue', sans-serif; font-size: 32px; color: var(--yellow); letter-spacing: 2px; }
+  footer .f-note { font-size: 12px; opacity: 0.4; letter-spacing: 2px; color: var(--white); }
+
+  @media (max-width: 768px) {
+    .hero, .section { padding: 40px 24px; }
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    .scroll-hint { left: 24px; }
+    footer { padding: 30px 24px; }
+    .model-switch { flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+<div class="cursor" id="cursor"></div>
+
+<section class="hero" id="top">
+  <div class="hero-grid"></div>
+  <div class="hero-tag">NPTEL · NLP · WEEK 3</div>
+  <h1>SMOOTHING<br><span>& MORPHOLOGY</span></h1>
+  <p class="hero-sub">Week 3 covers advanced n-gram smoothing (Good-Turing, Absolute Discounting, Kneser-Ney, Backoff, Interpolation) and computational morphology for NLP.</p>
+  <div class="hero-deco">W3</div>
+  <div class="scroll-hint">SCROLL TO EXPLORE</div>
+</section>
+
+<div class="marquee-wrap">
+  <div class="marquee-track">
+    <span class="marquee-item">GOOD-TURING</span>
+    <span class="marquee-item">ABSOLUTE DISCOUNTING</span>
+    <span class="marquee-item">KNESER-NEY</span>
+    <span class="marquee-item">BACKOFF</span>
+    <span class="marquee-item">INTERPOLATION</span>
+    <span class="marquee-item">MORPHEMES</span>
+    <span class="marquee-item">INFLECTION VS DERIVATION</span>
+    <span class="marquee-item">FINITE STATE AUTOMATON</span>
+    <span class="marquee-item">GOOD-TURING</span>
+    <span class="marquee-item">ABSOLUTE DISCOUNTING</span>
+    <span class="marquee-item">KNESER-NEY</span>
+    <span class="marquee-item">BACKOFF</span>
+    <span class="marquee-item">INTERPOLATION</span>
+    <span class="marquee-item">MORPHEMES</span>
+    <span class="marquee-item">INFLECTION VS DERIVATION</span>
+    <span class="marquee-item">FINITE STATE AUTOMATON</span>
+  </div>
+</div>
+
+<nav class="nav" id="main-nav">
+  <button class="nav-btn active" onclick="scrollToSec('#smoothing')">01 SMOOTHING</button>
+  <button class="nav-btn" onclick="scrollToSec('#models')">02 MODEL DETAILS</button>
+  <button class="nav-btn" onclick="scrollToSec('#interpolation')">03 INTERPOLATION LAB</button>
+  <button class="nav-btn" onclick="scrollToSec('#morphology')">04 MORPHOLOGY</button>
+  <button class="nav-btn" onclick="scrollToSec('#fsa')">05 FSA</button>
+  <button class="nav-btn" onclick="scrollToSec('#flashcards')">06 FLASHCARDS</button>
+  <button class="nav-btn" onclick="scrollToSec('#quiz')">07 QUIZ</button>
+</nav>
+
+<section class="section" id="smoothing">
+  <div class="section-label">01 — SPARSITY PROBLEM</div>
+  <h2 class="section-title">WHY WE NEED<br>SMOOTHING</h2>
+
+  <div class="grid-2">
+    <div class="card card-red">
+      <div class="section-label" style="color:rgba(255,255,255,0.7)">PROBLEM</div>
+      <p style="font-family:'Syne',sans-serif;font-size:20px;font-weight:700;line-height:1.6;">Unseen but valid n-grams get zero probability with raw MLE.</p>
+      <p style="margin-top:12px;line-height:1.8;">Zero probabilities break language modeling pipelines because one unseen event can zero out a whole sequence probability.</p>
+    </div>
+    <div class="card card-black">
+      <div class="section-label" style="color:var(--green)">SOLUTION FAMILY</div>
+      <div style="line-height:2;color:rgba(255,255,255,0.95);font-size:14px;">
+        Good-Turing Estimation<br>
+        Simple Good-Turing<br>
+        Absolute Discounting<br>
+        Kneser-Ney Smoothing<br>
+        Backoff & Interpolation
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-3" style="margin-top:20px;">
+    <div class="card card-yellow"><div class="section-label">GOOD-TURING</div><p style="line-height:1.8;font-size:14px;">Uses frequency-of-frequency counts (Nc) to estimate unseen mass.</p></div>
+    <div class="card card-blue"><div class="section-label">ABS DISCOUNT</div><p style="line-height:1.8;font-size:14px;">Subtract fixed d from seen counts and redistribute leftover probability.</p></div>
+    <div class="card card-green"><div class="section-label">KNESER-NEY</div><p style="line-height:1.8;font-size:14px;">Uses continuation probability, not plain unigram, for superior fallback.</p></div>
+  </div>
+</section>
+
+<section class="section" id="models">
+  <div class="section-label">02 — CORE METHODS</div>
+  <h2 class="section-title">MODEL<br>DETAILS</h2>
+
+  <div class="model-switch">
+    <button class="model-btn on" onclick="showModel('gt')">GOOD-TURING</button>
+    <button class="model-btn" onclick="showModel('ad')">ABS DISCOUNT</button>
+    <button class="model-btn" onclick="showModel('kn')">KNESER-NEY</button>
+    <button class="model-btn" onclick="showModel('bo')">BACKOFF</button>
+  </div>
+
+  <div class="model-panel show" id="model-gt">
+    <div class="grid-2">
+      <div class="card card-yellow">
+        <div class="section-label">ADJUSTED COUNT</div>
+        <div class="formula">c* = (c + 1) N(c+1) / N(c)</div>
+        <p style="margin-top:14px;line-height:1.8;font-size:14px;">Rare-event counts help allocate probability mass to unseen events. Unseen mass is tied to N1/N.</p>
+      </div>
+      <div class="card card-black">
+        <div class="section-label" style="color:var(--green)">NOTES</div>
+        <p style="line-height:1.9;font-size:14px;color:rgba(255,255,255,0.9);">Great for sparse data, but raw Nc values become noisy for larger counts. Simple Good-Turing smooths Nc curve.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="model-panel" id="model-ad">
+    <div class="grid-2">
+      <div class="card card-blue">
+        <div class="section-label">FORM</div>
+        <div class="formula">P(wi|h) = (c(h,wi)-d)/c(h) + lambda(h) P(wi)</div>
+        <p style="margin-top:14px;line-height:1.8;font-size:14px;">Typical discount d ≈ 0.75.</p>
+      </div>
+      <div class="card">
+        <div class="section-label">IDEA</div>
+        <p style="line-height:1.8;font-size:14px;">Reduce every seen count by a constant, then distribute leftover mass via lower-order model.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="model-panel" id="model-kn">
+    <div class="grid-2">
+      <div class="card card-green">
+        <div class="section-label">KEY INSIGHT</div>
+        <p style="line-height:1.8;font-size:14px;">Fallback should reward words that appear in many distinct contexts, not just high global frequency.</p>
+        <div class="formula" style="margin-top:14px;">Pcont(w) ∝ # unique histories before w</div>
+      </div>
+      <div class="card card-black">
+        <div class="section-label" style="color:var(--yellow)">WHY STRONG</div>
+        <p style="line-height:1.9;font-size:14px;color:rgba(255,255,255,0.92);">Kneser-Ney generally outperforms naive unigram fallback for bigrams/trigrams in real corpora.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="model-panel" id="model-bo">
+    <div class="grid-2">
+      <div class="card card-red">
+        <div class="section-label" style="color:rgba(255,255,255,0.75)">BACKOFF</div>
+        <p style="line-height:1.8;font-size:14px;">Use highest-order n-gram if available; otherwise recursively fall back to lower orders.</p>
+      </div>
+      <div class="card card-yellow">
+        <div class="section-label">INTERPOLATION</div>
+        <p style="line-height:1.8;font-size:14px;">Instead of hard fallback, combine trigram + bigram + unigram using lambdas that sum to 1.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="interpolation">
+  <div class="section-label">03 — HANDS ON</div>
+  <h2 class="section-title">LINEAR<br>INTERPOLATION<br>LAB</h2>
+
+  <div class="card card-black">
+    <div class="section-label" style="color:var(--green)">FORMULA</div>
+    <div class="formula">P = lambda1 * P3 + lambda2 * P2 + lambda3 * P1,   lambda1 + lambda2 + lambda3 = 1</div>
+  </div>
+
+  <div class="card" style="margin-top:20px;">
+    <div class="section-label">TRY LAMBDA SETTINGS</div>
+    <div class="lambda-wrap" style="margin-top:10px;">
+      <div class="lambda-ctrl">
+        <label>LAMBDA1 (TRIGRAM)</label>
+        <input id="l1" type="range" min="0" max="100" value="50" oninput="updateInterp()">
+      </div>
+      <div class="lambda-ctrl">
+        <label>LAMBDA2 (BIGRAM)</label>
+        <input id="l2" type="range" min="0" max="100" value="30" oninput="updateInterp()">
+      </div>
+      <div class="lambda-ctrl">
+        <label>LAMBDA3 (UNIGRAM)</label>
+        <input id="l3" type="range" min="0" max="100" value="20" oninput="updateInterp()">
+      </div>
+      <div class="score" id="interp-score">P=0.206</div>
+    </div>
+    <p id="interp-note" style="margin-top:16px;font-size:13px;line-height:1.8;opacity:0.75;"></p>
+  </div>
+</section>
+
+<section class="section" id="morphology">
+  <div class="section-label">04 — COMPUTATIONAL MORPHOLOGY</div>
+  <h2 class="section-title">MORPHEMES,<br>AFFIXES,<br>WORD FORMATION</h2>
+
+  <div class="grid-2">
+    <div class="card card-yellow">
+      <div class="section-label">BASICS</div>
+      <p style="line-height:1.9;font-size:14px;">Morpheme = smallest meaning-bearing unit. Example: <strong>dogs = dog + s</strong>, <strong>unladylike = un + lady + like</strong>.</p>
+      <div style="margin-top:10px;">
+        <span class="pill">FREE / BOUND</span>
+        <span class="pill">CONTENT / FUNCTIONAL</span>
+      </div>
+    </div>
+    <div class="card card-blue">
+      <div class="section-label">AFFIX TYPES</div>
+      <p style="line-height:1.9;font-size:14px;">Prefix, Suffix, Infix, Circumfix. Also allomorph variation: <strong>un-, in-, im-, ir-</strong> for similar negation meaning.</p>
+    </div>
+  </div>
+
+  <div class="grid-3" style="margin-top:20px;">
+    <div class="card"><div class="section-label">INFLECTIONAL</div><p style="line-height:1.8;font-size:14px;">Same lexeme, different grammar: bring, brings, bringing, brought.</p></div>
+    <div class="card card-green"><div class="section-label">DERIVATIONAL</div><p style="line-height:1.8;font-size:14px;">Creates new words: logic → logical → illogical → logician.</p></div>
+    <div class="card card-red"><div class="section-label" style="color:rgba(255,255,255,0.75)">PROCESSES</div><p style="line-height:1.8;font-size:14px;">Concatenation, Reduplication, Suppletion, Internal Change.</p></div>
+  </div>
+
+  <div class="card" style="margin-top:20px;">
+    <div class="section-label">NLP USES</div>
+    <p style="line-height:1.9;font-size:14px;">Lemmatization, morphological analysis, POS tagging, morpheme segmentation, and word generation all depend on morphology knowledge.</p>
+  </div>
+</section>
+
+<section class="section" id="fsa">
+  <div class="section-label">05 — FORMAL TOOL</div>
+  <h2 class="section-title">FINITE STATE<br>AUTOMATON (FSA)</h2>
+
+  <div class="grid-2">
+    <div class="card card-black">
+      <div class="section-label" style="color:var(--yellow)">DEFINITION</div>
+      <p style="line-height:1.9;font-size:14px;color:rgba(255,255,255,0.9);">An FSA is a directed graph with states, labeled transitions, start state, and accept states. It recognizes regular languages and powers morphology pipelines.</p>
+    </div>
+    <div class="card card-yellow">
+      <div class="section-label">WHY NEEDED</div>
+      <p style="line-height:1.9;font-size:14px;">Storing every surface word form is infeasible. Rule-driven finite-state processing scales better for rich morphology languages.</p>
+    </div>
+  </div>
+
+  <div class="grid-3" style="margin-top:20px;">
+    <div class="card">Morphological parsing</div>
+    <div class="card card-blue">Word generation</div>
+    <div class="card card-green">Spell checking & lexicon traversal</div>
+  </div>
+</section>
+
+<section class="section" id="flashcards" style="background:var(--black);color:var(--white);">
+  <div class="section-label" style="color:var(--yellow)">06 — RECALL</div>
+  <h2 class="section-title" style="color:var(--white);">FLASH<br>CARDS</h2>
+  <p style="font-family:'Syne',sans-serif;font-size:16px;color:rgba(245,240,232,0.6);margin-bottom:40px;">Click card to flip. Use arrows to browse Week 3 terms.</p>
+
+  <div class="fc-container">
+    <div class="fc-wrapper" onclick="flipCard()">
+      <div class="fc-inner" id="fc-inner">
+        <div class="fc-front">
+          <div class="fc-term" id="fc-term">GOOD-TURING</div>
+          <div class="fc-hint">CLICK TO REVEAL DEFINITION</div>
+        </div>
+        <div class="fc-back">
+          <div class="fc-def" id="fc-def">Smoothing method that uses frequency-of-frequency counts to estimate unseen events.</div>
+        </div>
+      </div>
+    </div>
+    <div class="fc-controls">
+      <button class="fc-ctrl-btn" onclick="prevCard()">← PREV</button>
+      <div class="fc-progress" id="fc-progress">1 / 10</div>
+      <button class="fc-ctrl-btn" onclick="nextCard()">NEXT →</button>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="quiz">
+  <div class="section-label">07 — TEST YOURSELF</div>
+  <h2 class="section-title">QUICK<br>QUIZ</h2>
+
+  <div class="score-bar" id="score-bar"></div>
+  <div class="quiz-card" id="quiz-card">
+    <span class="q-number" id="q-num"></span>
+    <div class="q-text" id="q-text"></div>
+    <div class="q-options" id="q-options"></div>
+    <div class="q-feedback" id="q-feedback"></div>
+    <button class="next-btn" id="next-btn" onclick="nextQuestion()">NEXT QUESTION →</button>
+  </div>
+</section>
+
+<footer>
+  <div class="f-logo">NLP WEEK 3</div>
+  <div class="f-note">SMOOTHING · KNESER-NEY · BACKOFF · MORPHOLOGY · FSA</div>
+</footer>
+
+<script>
+const cursor = document.getElementById('cursor');
+document.addEventListener('mousemove', e => {
+  cursor.style.left = e.clientX + 'px';
+  cursor.style.top = e.clientY + 'px';
+});
+document.querySelectorAll('button,input,.card,.fc-wrapper').forEach(el => {
+  el.addEventListener('mouseenter', () => cursor.classList.add('big'));
+  el.addEventListener('mouseleave', () => cursor.classList.remove('big'));
+});
+
+function scrollToSec(sel) {
+  const el = document.querySelector(sel);
+  if (el) el.scrollIntoView({behavior:'smooth'});
+}
+
+const sections = ['smoothing','models','interpolation','morphology','fsa','flashcards','quiz'];
+const navBtns = document.querySelectorAll('.nav-btn');
+window.addEventListener('scroll', () => {
+  let cur = '';
+  sections.forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.getBoundingClientRect().top < 200) cur = id;
+  });
+  navBtns.forEach((b,i) => b.classList.toggle('active', sections[i] === cur));
+});
+
+function showModel(id) {
+  document.querySelectorAll('.model-panel').forEach(p => p.classList.remove('show'));
+  document.querySelectorAll('.model-btn').forEach(b => b.classList.remove('on'));
+  document.getElementById('model-'+id).classList.add('show');
+  if (event && event.target) event.target.classList.add('on');
+}
+
+const P3 = 0.28;
+const P2 = 0.19;
+const P1 = 0.11;
+function updateInterp() {
+  const r1 = +document.getElementById('l1').value;
+  const r2 = +document.getElementById('l2').value;
+  const r3 = +document.getElementById('l3').value;
+  const sum = r1 + r2 + r3 || 1;
+  const l1 = r1 / sum;
+  const l2 = r2 / sum;
+  const l3 = r3 / sum;
+  const p = l1 * P3 + l2 * P2 + l3 * P1;
+  document.getElementById('interp-score').textContent = `P=${p.toFixed(3)}`;
+  document.getElementById('interp-note').textContent = `Normalized lambdas: (${l1.toFixed(2)}, ${l2.toFixed(2)}, ${l3.toFixed(2)}). Heavier lambda1 gives more weight to higher-order context.`;
+}
+
+const cards = [
+  {term:'GOOD-TURING',def:'Uses Nc counts to estimate adjusted counts and unseen probability mass.'},
+  {term:'SIMPLE GOOD-TURING',def:'Smooths noisy frequency-of-frequency values with a fitted curve.'},
+  {term:'ABSOLUTE DISCOUNTING',def:'Subtracts fixed d from seen counts and redistributes remaining mass.'},
+  {term:'KNESER-NEY',def:'Uses continuation probability based on context diversity.'},
+  {term:'BACKOFF',def:'Fallback from higher-order to lower-order n-grams when counts are missing.'},
+  {term:'INTERPOLATION',def:'Mixes multiple n-gram orders with lambda weights summing to 1.'},
+  {term:'MORPHEME',def:'Smallest meaning-bearing unit in a word.'},
+  {term:'INFLECTIONAL',def:'Grammatical variants of the same lexeme.'},
+  {term:'DERIVATIONAL',def:'Word formation that can change lexical category/meaning.'},
+  {term:'FSA',def:'Finite-state machine used for morphological processing and recognition.'}
+];
+let fcIdx = 0;
+let fcFlipped = false;
+function updateCard() {
+  document.getElementById('fc-term').textContent = cards[fcIdx].term;
+  document.getElementById('fc-def').textContent = cards[fcIdx].def;
+  document.getElementById('fc-progress').textContent = `${fcIdx + 1} / ${cards.length}`;
+  document.getElementById('fc-inner').classList.remove('flipped');
+  fcFlipped = false;
+}
+function flipCard() {
+  fcFlipped = !fcFlipped;
+  document.getElementById('fc-inner').classList.toggle('flipped', fcFlipped);
+}
+function nextCard() { fcIdx = (fcIdx + 1) % cards.length; updateCard(); }
+function prevCard() { fcIdx = (fcIdx - 1 + cards.length) % cards.length; updateCard(); }
+
+const questions = [
+  {q:'Why is smoothing needed in language models?',opts:['To speed up tokenization','To remove stopwords','To avoid zero probabilities for unseen n-grams','To increase vocabulary size'],ans:2,exp:'Smoothing assigns probability mass to unseen but valid events.'},
+  {q:'Good-Turing uses which type of statistic?',opts:['Word embeddings','Frequency-of-frequency Nc counts','POS confusion matrix','Suffix tables'],ans:1,exp:'Good-Turing relies on counts like N1, N2 etc.'},
+  {q:'Kneser-Ney improves fallback using:',opts:['Longer words only','Continuation probability','Character bigrams only','Random discounting'],ans:1,exp:'It favors words that appear in many distinct contexts.'},
+  {q:'Backoff strategy means:',opts:['Always use unigram','Always use trigram','Fallback to lower-order models if needed','Ignore unseen contexts'],ans:2,exp:'Backoff uses highest available order then falls back recursively.'},
+  {q:'A morpheme is:',opts:['A complete sentence','Smallest meaning-bearing unit','Only a suffix','Any character'],ans:1,exp:'Morpheme is the smallest unit carrying meaning.'},
+  {q:'Inflectional morphology typically:',opts:['Creates unrelated new words','Changes grammatical form of same lexeme','Deletes roots','Removes tense information'],ans:1,exp:'Inflection keeps lexeme identity while changing grammatical features.'},
+  {q:'Which is a derivational example?',opts:['bring → brings','logic → logical','cat → cats','walk → walked'],ans:1,exp:'Derivation forms a new lexical item/category.'},
+  {q:'FSA is useful because it:',opts:['Stores all word forms explicitly','Handles morphology with states/transitions','Requires deep neural networks','Eliminates lexicon use'],ans:1,exp:'FSA models regular form patterns efficiently.'}
+];
+
+let qIdx = 0;
+let qAnswered = false;
+const qResults = [];
+
+function initQuiz() {
+  document.getElementById('score-bar').innerHTML = questions.map((_,i)=>`<div class="score-dot" id="dot-${i}"></div>`).join('');
+  renderQuestion();
+}
+
+function renderQuestion() {
+  if (qIdx >= questions.length) {
+    const correct = qResults.filter(Boolean).length;
+    document.getElementById('quiz-card').innerHTML = `
+      <div style="text-align:center;">
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:84px;line-height:1;">${correct}/${questions.length}</div>
+        <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;margin:16px 0;">${correct >= 6 ? 'Strong Week 3 grasp.' : 'Nice effort. Review and retry.'}</div>
+        <button class="next-btn show" style="display:inline-block;" onclick="restartQuiz()">RESTART QUIZ</button>
+      </div>`;
+    return;
+  }
+
+  const q = questions[qIdx];
+  qAnswered = false;
+  document.getElementById('q-num').textContent = `QUESTION ${qIdx + 1} / ${questions.length}`;
+  document.getElementById('q-text').textContent = q.q;
+  document.getElementById('q-options').innerHTML = q.opts.map((o,i)=>`<button class="q-opt" onclick="answerQ(${i})">${String.fromCharCode(65+i)}. ${o}</button>`).join('');
+  document.getElementById('q-feedback').className = 'q-feedback';
+  document.getElementById('q-feedback').textContent = '';
+  document.getElementById('next-btn').className = 'next-btn';
+  document.getElementById('dot-'+qIdx).classList.add('done');
+}
+
+function answerQ(chosen) {
+  if (qAnswered) return;
+  qAnswered = true;
+  const q = questions[qIdx];
+  const opts = document.querySelectorAll('.q-opt');
+  opts[q.ans].classList.add('correct');
+  if (chosen !== q.ans) opts[chosen].classList.add('wrong');
+
+  const correct = chosen === q.ans;
+  qResults.push(correct);
+  const dot = document.getElementById('dot-'+qIdx);
+  dot.classList.remove('done');
+  dot.classList.add(correct ? 'correct' : 'wrong');
+
+  const fb = document.getElementById('q-feedback');
+  fb.textContent = (correct ? 'Correct. ' : 'Not quite. ') + q.exp;
+  fb.className = 'q-feedback show';
+  fb.style.background = correct ? '#f0ffe8' : '#ffe0e0';
+
+  document.getElementById('next-btn').className = 'next-btn show';
+}
+
+function nextQuestion() { qIdx++; renderQuestion(); }
+
+function restartQuiz() {
+  qIdx = 0;
+  qAnswered = false;
+  qResults.length = 0;
+  document.getElementById('quiz-card').innerHTML = `
+    <span class="q-number" id="q-num"></span>
+    <div class="q-text" id="q-text"></div>
+    <div class="q-options" id="q-options"></div>
+    <div class="q-feedback" id="q-feedback"></div>
+    <button class="next-btn" id="next-btn" onclick="nextQuestion()">NEXT QUESTION →</button>`;
+  initQuiz();
+}
+
+updateInterp();
+updateCard();
+initQuiz();
+</script>
+</body>
+</html>

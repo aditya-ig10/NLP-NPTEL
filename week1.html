@@ -1,0 +1,1015 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NLP Week 1 — Foundations, Ambiguity & Zipf's Law</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --black: #0a0a0a;
+    --white: #f5f0e8;
+    --yellow: #FFE600;
+    --red: #FF2D55;
+    --blue: #00C8FF;
+    --green: #00FF88;
+    --purple: #BF5FFF;
+    --orange: #FF6B00;
+    --border: 3px solid var(--black);
+    --shadow: 6px 6px 0 var(--black);
+    --shadow-lg: 10px 10px 0 var(--black);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--white);
+    color: var(--black);
+    font-family: 'Space Mono', monospace;
+    overflow-x: hidden;
+    cursor: none;
+  }
+
+  .cursor {
+    position: fixed;
+    width: 20px; height: 20px;
+    background: var(--yellow);
+    border: 3px solid var(--black);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%);
+    transition: transform 0.1s, background 0.2s, width 0.2s, height 0.2s;
+  }
+  .cursor.big {
+    width: 40px; height: 40px;
+    background: var(--red);
+  }
+
+  body::before {
+    content:'';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    background-size: 200px;
+    pointer-events: none;
+    z-index: 1000;
+    opacity: 0.5;
+  }
+
+  .hero {
+    min-height: 100vh;
+    background: var(--black);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 60px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .hero-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,230,0,0.07) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,230,0,0.07) 1px, transparent 1px);
+    background-size: 60px 60px;
+    animation: gridMove 20s linear infinite;
+  }
+  @keyframes gridMove {
+    0% { background-position: 0 0; }
+    100% { background-position: 60px 60px; }
+  }
+
+  .hero-tag {
+    font-size: 13px;
+    background: var(--yellow);
+    color: var(--black);
+    padding: 6px 14px;
+    border: var(--border);
+    border-color: var(--yellow);
+    font-weight: 700;
+    letter-spacing: 3px;
+    margin-bottom: 30px;
+    display: inline-block;
+    animation: tagPop 0.5s ease 0.3s both;
+  }
+  @keyframes tagPop {
+    from { opacity:0; transform: translateX(-30px); }
+    to { opacity:1; transform: translateX(0); }
+  }
+
+  .hero h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(70px, 12vw, 180px);
+    color: var(--white);
+    line-height: 0.9;
+    letter-spacing: -2px;
+    position: relative;
+    z-index: 2;
+    animation: titleDrop 0.8s cubic-bezier(0.34,1.56,0.64,1) 0.5s both;
+  }
+  @keyframes titleDrop {
+    from { opacity:0; transform: translateY(-60px); }
+    to { opacity:1; transform: translateY(0); }
+  }
+
+  .hero h1 span {
+    color: var(--yellow);
+    display: inline-block;
+    animation: wobble 3s ease-in-out infinite;
+  }
+  @keyframes wobble {
+    0%,100% { transform: rotate(-1deg); }
+    50% { transform: rotate(1deg); }
+  }
+
+  .hero-sub {
+    font-family: 'Syne', sans-serif;
+    font-size: 20px;
+    color: rgba(245,240,232,0.6);
+    margin-top: 20px;
+    max-width: 640px;
+    animation: fadeUp 0.8s ease 0.9s both;
+  }
+  @keyframes fadeUp {
+    from { opacity:0; transform: translateY(20px); }
+    to { opacity:1; transform: translateY(0); }
+  }
+
+  .hero-deco {
+    position: absolute;
+    right: -50px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 300px;
+    color: rgba(255,230,0,0.05);
+    pointer-events: none;
+    letter-spacing: -10px;
+    animation: decoFloat 6s ease-in-out infinite;
+  }
+  @keyframes decoFloat {
+    0%,100% { transform: translateY(-50%) rotate(-5deg); }
+    50% { transform: translateY(-52%) rotate(-3deg); }
+  }
+
+  .scroll-hint {
+    position: absolute;
+    bottom: 30px;
+    left: 60px;
+    color: var(--yellow);
+    font-size: 12px;
+    letter-spacing: 3px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  .scroll-hint::before {
+    content:'';
+    display:block;
+    width:40px; height:2px;
+    background: var(--yellow);
+  }
+
+  .marquee-wrap {
+    overflow: hidden;
+    border-top: var(--border);
+    border-bottom: var(--border);
+    background: var(--yellow);
+    padding: 14px 0;
+  }
+  .marquee-track {
+    display: flex;
+    gap: 40px;
+    white-space: nowrap;
+    animation: marquee 18s linear infinite;
+    width: max-content;
+  }
+  @keyframes marquee { from{transform:translateX(0)} to{transform:translateX(-50%)} }
+  .marquee-item {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    letter-spacing: 3px;
+    color: var(--black);
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+  .marquee-item::after { content:'◆'; font-size: 12px; }
+
+  .nav {
+    position: sticky;
+    top: 0;
+    z-index: 500;
+    background: var(--black);
+    border-bottom: var(--border);
+    border-color: var(--yellow);
+    display: flex;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .nav::-webkit-scrollbar { display:none; }
+  .nav-btn {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: rgba(245,240,232,0.5);
+    padding: 16px 24px;
+    border: none;
+    background: transparent;
+    cursor: none;
+    white-space: nowrap;
+    transition: all 0.2s;
+    border-right: 1px solid rgba(255,230,0,0.2);
+    text-transform: uppercase;
+  }
+  .nav-btn:hover, .nav-btn.active {
+    color: var(--yellow);
+    background: rgba(255,230,0,0.08);
+  }
+
+  .section {
+    padding: 80px 60px;
+    border-bottom: var(--border);
+    position: relative;
+  }
+  .section-label {
+    font-size: 11px;
+    letter-spacing: 4px;
+    color: var(--red);
+    font-weight: 700;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+  }
+  .section-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(42px, 6vw, 80px);
+    line-height: 1;
+    margin-bottom: 34px;
+    letter-spacing: 1px;
+  }
+
+  .card {
+    background: var(--white);
+    border: var(--border);
+    box-shadow: var(--shadow);
+    padding: 28px;
+    transition: transform 0.15s, box-shadow 0.15s;
+    position: relative;
+  }
+  .card:hover {
+    transform: translate(-3px, -3px);
+    box-shadow: 9px 9px 0 var(--black);
+  }
+  .card-yellow { background: var(--yellow); }
+  .card-red { background: var(--red); color: var(--white); }
+  .card-blue { background: var(--blue); }
+  .card-green { background: var(--green); }
+  .card-black { background: var(--black); color: var(--white); }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .grid-auto { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
+
+  .pill {
+    display: inline-block;
+    border: var(--border);
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    margin: 6px 8px 0 0;
+    background: var(--white);
+  }
+
+  .comparison {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    margin-top: 20px;
+  }
+  .comparison .box {
+    border: var(--border);
+    padding: 18px;
+    background: var(--white);
+  }
+
+  .amb-btns {
+    display: flex;
+    border: var(--border);
+    width: fit-content;
+    margin-bottom: 26px;
+  }
+  .amb-btn {
+    font-family: 'Syne', sans-serif;
+    font-size: 15px;
+    font-weight: 800;
+    padding: 14px 28px;
+    border: none;
+    border-right: var(--border);
+    background: var(--white);
+    cursor: none;
+  }
+  .amb-btn:last-child { border-right: none; }
+  .amb-btn.on { background: var(--black); color: var(--yellow); }
+  .amb-panel { display: none; }
+  .amb-panel.show { display: block; }
+
+  #zipf-canvas {
+    border: var(--border);
+    background: var(--white);
+    width: 100%;
+    height: 320px;
+    display: block;
+    box-shadow: var(--shadow);
+  }
+
+  .fc-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+  }
+  .fc-wrapper {
+    width: 100%;
+    max-width: 600px;
+    height: 280px;
+    perspective: 1000px;
+    cursor: none;
+  }
+  .fc-inner {
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+    transition: transform 0.6s cubic-bezier(0.34,1.56,0.64,1);
+    position: relative;
+  }
+  .fc-inner.flipped { transform: rotateY(180deg); }
+  .fc-front, .fc-back {
+    position: absolute;
+    inset: 0;
+    border: 3px solid var(--yellow);
+    box-shadow: 8px 8px 0 var(--yellow);
+    backface-visibility: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    text-align: center;
+  }
+  .fc-front { background: var(--black); }
+  .fc-back { background: var(--yellow); color: var(--black); transform: rotateY(180deg); }
+  .fc-term {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 42px;
+    letter-spacing: 2px;
+    line-height: 1.1;
+  }
+  .fc-def {
+    font-family: 'Syne', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.4;
+  }
+  .fc-hint {
+    font-size: 12px;
+    opacity: 0.5;
+    letter-spacing: 2px;
+    margin-top: 20px;
+    text-transform: uppercase;
+  }
+  .fc-controls {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+  .fc-ctrl-btn {
+    padding: 10px 18px;
+    border: var(--border);
+    background: var(--white);
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    cursor: none;
+  }
+  .fc-progress {
+    border: var(--border);
+    padding: 8px 14px;
+    font-weight: 700;
+    background: var(--yellow);
+  }
+
+  #quiz { background: var(--yellow); }
+  .quiz-card {
+    background: var(--white);
+    border: var(--border);
+    box-shadow: var(--shadow-lg);
+    padding: 40px;
+    max-width: 760px;
+    margin: 0 auto;
+  }
+  .q-text {
+    font-family: 'Syne', sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 30px;
+    line-height: 1.4;
+  }
+  .q-number {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 14px;
+    letter-spacing: 3px;
+    color: var(--red);
+    margin-bottom: 10px;
+    display: block;
+  }
+  .q-options {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .q-opt {
+    font-family: 'Space Mono', monospace;
+    font-size: 15px;
+    padding: 16px 20px;
+    border: var(--border);
+    background: var(--white);
+    cursor: none;
+    text-align: left;
+    transition: all 0.15s;
+    font-weight: 700;
+  }
+  .q-opt:hover { background: var(--black); color: var(--yellow); transform: translate(-2px,-2px); box-shadow: var(--shadow); }
+  .q-opt.correct { background: var(--green) !important; color: var(--black) !important; }
+  .q-opt.wrong { background: var(--red) !important; color: white !important; }
+  .q-feedback {
+    margin-top: 20px;
+    padding: 20px;
+    border: var(--border);
+    font-size: 14px;
+    line-height: 1.6;
+    display: none;
+  }
+  .q-feedback.show { display: block; }
+  .next-btn {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 24px;
+    letter-spacing: 2px;
+    padding: 14px 40px;
+    background: var(--black);
+    color: var(--yellow);
+    border: var(--border);
+    cursor: none;
+    box-shadow: var(--shadow);
+    margin-top: 20px;
+    display: none;
+  }
+  .next-btn.show { display: inline-block; }
+
+  .score-bar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+    justify-content: center;
+  }
+  .score-dot {
+    width: 20px; height: 20px;
+    border: var(--border);
+    background: var(--white);
+  }
+  .score-dot.done { background: var(--black); }
+  .score-dot.correct { background: var(--green); }
+  .score-dot.wrong { background: var(--red); }
+
+  footer {
+    background: var(--black);
+    border-top: var(--border);
+    border-color: var(--yellow);
+    padding: 40px 60px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 20px;
+  }
+  footer .f-logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 32px;
+    color: var(--yellow);
+    letter-spacing: 2px;
+  }
+  footer .f-note {
+    font-size: 12px;
+    opacity: 0.4;
+    letter-spacing: 2px;
+    color: var(--white);
+  }
+
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: var(--black); }
+  ::-webkit-scrollbar-thumb { background: var(--yellow); border: 2px solid var(--black); }
+
+  @media (max-width: 768px) {
+    .hero, .section { padding: 40px 24px; }
+    .grid-2, .grid-3, .comparison { grid-template-columns: 1fr; }
+    .scroll-hint { left: 24px; }
+    footer { padding: 30px 24px; }
+    .amb-btns { flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+
+<div class="cursor" id="cursor"></div>
+
+<section class="hero" id="top">
+  <div class="hero-grid"></div>
+  <div class="hero-tag">NPTEL · NLP · WEEK 1</div>
+  <h1>NLP<br><span>FOUNDATIONS</span><br>& LANGUAGE<br>PATTERNS</h1>
+  <p class="hero-sub">A focused visual guide to Week 1: what NLP is, why language is hard, and how corpus statistics like Type-Token Ratio and Zipf's Law shape modern NLP.</p>
+  <div class="hero-deco">W1</div>
+  <div class="scroll-hint">SCROLL TO EXPLORE</div>
+</section>
+
+<div class="marquee-wrap">
+  <div class="marquee-track">
+    <span class="marquee-item">NLP INTRODUCTION</span>
+    <span class="marquee-item">LANGUAGE AMBIGUITY</span>
+    <span class="marquee-item">FUNCTION VS CONTENT WORDS</span>
+    <span class="marquee-item">TYPE TOKEN RATIO</span>
+    <span class="marquee-item">HAPAX LEGOMENA</span>
+    <span class="marquee-item">ZIPF'S LAW</span>
+    <span class="marquee-item">NLP APPLICATIONS</span>
+    <span class="marquee-item">NLP INTRODUCTION</span>
+    <span class="marquee-item">LANGUAGE AMBIGUITY</span>
+    <span class="marquee-item">FUNCTION VS CONTENT WORDS</span>
+    <span class="marquee-item">TYPE TOKEN RATIO</span>
+    <span class="marquee-item">HAPAX LEGOMENA</span>
+    <span class="marquee-item">ZIPF'S LAW</span>
+    <span class="marquee-item">NLP APPLICATIONS</span>
+  </div>
+</div>
+
+<nav class="nav" id="main-nav">
+  <button class="nav-btn active" onclick="scrollToSec('#intro')">01 INTRO</button>
+  <button class="nav-btn" onclick="scrollToSec('#ambiguity')">02 AMBIGUITY</button>
+  <button class="nav-btn" onclick="scrollToSec('#challenges')">03 CHALLENGES</button>
+  <button class="nav-btn" onclick="scrollToSec('#stats')">04 CORPUS STATS</button>
+  <button class="nav-btn" onclick="scrollToSec('#zipf')">05 ZIPF'S LAW</button>
+  <button class="nav-btn" onclick="scrollToSec('#flashcards')">06 FLASHCARDS</button>
+  <button class="nav-btn" onclick="scrollToSec('#quiz')">07 QUIZ</button>
+</nav>
+
+<section class="section" id="intro">
+  <div class="section-label">01 — FOUNDATIONS</div>
+  <h2 class="section-title">WHAT IS NLP<br>AND WHY IT<br>MATTERS</h2>
+
+  <div class="grid-2">
+    <div class="card card-yellow">
+      <div class="section-label">DEFINITION</div>
+      <p style="font-family:'Syne',sans-serif;font-size:18px;font-weight:700;line-height:1.6;">
+        Natural Language Processing (NLP) combines AI, Computer Science, and Linguistics to make machines understand and generate human language.
+      </p>
+      <div style="margin-top:14px;opacity:0.7;font-size:13px;line-height:1.8;">
+        Works with English, Hindi, French, Tamil, Arabic, and more.<br>
+        Human language is ambiguous, context-dependent, and constantly evolving.
+      </div>
+    </div>
+
+    <div class="card card-black">
+      <div class="section-label" style="color:var(--green)">MAIN GOALS</div>
+      <div style="font-size:14px;line-height:1.9;color:var(--white);opacity:0.95;">
+        <strong>Scientific Goal:</strong> understand how language represents meaning.<br>
+        <strong>Engineering Goal:</strong> build usable language-processing systems.
+      </div>
+      <div style="margin-top:16px;">
+        <span class="pill" style="background:var(--green);color:var(--black);">TRANSLATION</span>
+        <span class="pill" style="background:var(--blue);">SEARCH</span>
+        <span class="pill" style="background:var(--yellow);">CHATBOTS</span>
+        <span class="pill" style="background:var(--orange);">SUMMARIZATION</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-3" style="margin-top:20px;">
+    <div class="card">
+      <div class="section-label">WHY IMPORTANT</div>
+      <p style="line-height:1.8;font-size:14px;">Most human knowledge is in text: news, books, emails, legal docs, web pages, research papers, social posts.</p>
+    </div>
+    <div class="card card-blue">
+      <div class="section-label">CORE NEED</div>
+      <p style="line-height:1.8;font-size:14px;">Data volume is too high for manual reading. NLP automates extraction and interpretation at scale.</p>
+    </div>
+    <div class="card card-green">
+      <div class="section-label">OUTCOME</div>
+      <p style="line-height:1.8;font-size:14px;">Faster information access, multilingual systems, and practical automation in communication workflows.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="ambiguity">
+  <div class="section-label">02 — LANGUAGE COMPLEXITY</div>
+  <h2 class="section-title">WHY NLP IS<br>HARD: AMBIGUITY</h2>
+
+  <div class="amb-btns">
+    <button class="amb-btn on" onclick="showAmb('lexical')">LEXICAL</button>
+    <button class="amb-btn" onclick="showAmb('structural')">STRUCTURAL</button>
+    <button class="amb-btn" onclick="showAmb('semantic')">SEMANTIC</button>
+    <button class="amb-btn" onclick="showAmb('vague')">VAGUENESS</button>
+  </div>
+
+  <div class="amb-panel show" id="amb-lexical">
+    <div class="card card-red">
+      <div class="section-label" style="color:rgba(255,255,255,0.7)">LEXICAL AMBIGUITY</div>
+      <p style="font-family:'Syne',sans-serif;font-size:20px;line-height:1.6;font-weight:700;">One word can have multiple meanings depending on context.</p>
+      <p style="margin-top:14px;font-size:14px;line-height:1.8;opacity:0.95;">Example idea: "Will Will will Will's will?" where "Will" appears as name, auxiliary, and noun.</p>
+    </div>
+  </div>
+
+  <div class="amb-panel" id="amb-structural">
+    <div class="card card-blue">
+      <div class="section-label">STRUCTURAL AMBIGUITY</div>
+      <p style="font-family:'Syne',sans-serif;font-size:20px;line-height:1.6;font-weight:700;">A sentence can have multiple parse trees.</p>
+      <p style="margin-top:14px;font-size:14px;line-height:1.8;">"The man saw the boy with the binoculars."<br>Did the man use binoculars, or did the boy have them?</p>
+    </div>
+  </div>
+
+  <div class="amb-panel" id="amb-semantic">
+    <div class="card card-yellow">
+      <div class="section-label">SEMANTIC AMBIGUITY</div>
+      <p style="font-family:'Syne',sans-serif;font-size:20px;line-height:1.6;font-weight:700;">Same words, different interpretations.</p>
+      <p style="margin-top:14px;font-size:14px;line-height:1.8;">"Flying planes can be dangerous."<br>It may mean piloting planes is dangerous, or planes that are flying are dangerous.</p>
+    </div>
+  </div>
+
+  <div class="amb-panel" id="amb-vague">
+    <div class="card card-green">
+      <div class="section-label">VAGUENESS</div>
+      <p style="font-family:'Syne',sans-serif;font-size:20px;line-height:1.6;font-weight:700;">Natural language often lacks precise boundaries.</p>
+      <p style="margin-top:14px;font-size:14px;line-height:1.8;">Phrases like "It is warm" or "She must have" require context to determine exact meaning.</p>
+    </div>
+  </div>
+
+  <div class="card card-black" style="margin-top:20px;">
+    <div class="section-label" style="color:var(--yellow)">PARSING EXPLOSION</div>
+    <p style="font-size:14px;line-height:1.9;color:rgba(255,255,255,0.9);">As sentence length increases, possible parse structures grow rapidly. That combinatorial growth makes language understanding computationally expensive.</p>
+  </div>
+</section>
+
+<section class="section" id="challenges">
+  <div class="section-label">03 — ADDITIONAL CHALLENGES</div>
+  <h2 class="section-title">FROM SOCIAL<br>TEXT TO IDIOMS</h2>
+
+  <div class="grid-auto">
+    <div class="card"><div class="section-label">NON-STANDARD TEXT</div><p style="line-height:1.8;font-size:14px;">Examples: "u", "gr8", "sooo happyyy". Requires robust normalization and preprocessing.</p></div>
+    <div class="card card-yellow"><div class="section-label">SEGMENTATION</div><p style="line-height:1.8;font-size:14px;">Token boundaries are not always obvious, especially in hashtags, compounds, and scripts without whitespace.</p></div>
+    <div class="card card-blue"><div class="section-label">IDIOMS</div><p style="line-height:1.8;font-size:14px;">Phrases like "burn the midnight oil" are non-literal. Word-by-word interpretation fails.</p></div>
+    <div class="card card-green"><div class="section-label">NEOLOGISMS</div><p style="line-height:1.8;font-size:14px;">Vocabulary evolves: "unfriend", "retweet", and verbified brand names enter language rapidly.</p></div>
+    <div class="card card-red"><div class="section-label" style="color:rgba(255,255,255,0.75)">SENSE SHIFT</div><p style="line-height:1.8;font-size:14px;">Existing words acquire new meanings (e.g., "sick" meaning "great"). Context becomes essential.</p></div>
+    <div class="card card-black"><div class="section-label" style="color:var(--green)">ENTITY AMBIGUITY</div><p style="line-height:1.8;font-size:14px;color:rgba(255,255,255,0.9);">A phrase can be a person, title, place, or product depending on context.</p></div>
+  </div>
+
+  <div class="comparison">
+    <div class="box">
+      <div class="section-label">NATURAL LANGUAGE</div>
+      <p style="line-height:1.8;font-size:14px;">Ambiguous, flexible, informal, context-driven.</p>
+    </div>
+    <div class="box" style="background:var(--black);color:var(--white);">
+      <div class="section-label" style="color:var(--green)">PROGRAMMING LANGUAGE</div>
+      <p style="line-height:1.8;font-size:14px;">Strict syntax, deterministic interpretation, machine-precise semantics.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="stats">
+  <div class="section-label">04 — CORPUS BASICS</div>
+  <h2 class="section-title">TYPE, TOKEN,<br>TTR & WORD<br>FREQUENCY</h2>
+
+  <div class="grid-2">
+    <div class="card card-yellow">
+      <div class="section-label">TYPE VS TOKEN</div>
+      <p style="font-size:14px;line-height:1.8;">Sentence: <strong>cat cat dog</strong><br>Tokens = 3 (all occurrences)<br>Types = 2 (unique words: cat, dog)</p>
+    </div>
+    <div class="card card-black">
+      <div class="section-label" style="color:var(--blue)">TYPE-TOKEN RATIO</div>
+      <p style="font-size:14px;line-height:1.8;color:rgba(255,255,255,0.95);">TTR = Types / Tokens. Higher TTR suggests richer vocabulary, but TTR depends strongly on text length.</p>
+      <div style="margin-top:12px;color:var(--green);font-weight:700;">Tom Sawyer: 8018/71370 = 0.112</div>
+      <div style="color:var(--yellow);font-weight:700;">Shakespeare: 29066/884647 = 0.032</div>
+    </div>
+  </div>
+
+  <div class="grid-3" style="margin-top:20px;">
+    <div class="card">
+      <div class="section-label">FUNCTION WORDS</div>
+      <p style="font-size:14px;line-height:1.8;">Grammatical glue with low standalone meaning: the, a, and, of, to.</p>
+    </div>
+    <div class="card card-blue">
+      <div class="section-label">CONTENT WORDS</div>
+      <p style="font-size:14px;line-height:1.8;">Carry semantic meaning: computer, teacher, democracy, happiness.</p>
+    </div>
+    <div class="card card-red">
+      <div class="section-label" style="color:rgba(255,255,255,0.75)">HAPAX LEGOMENA</div>
+      <p style="font-size:14px;line-height:1.8;">Words appearing exactly once in a corpus. Important for sparsity and language modeling.</p>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="zipf">
+  <div class="section-label">05 — EMPIRICAL LAW</div>
+  <h2 class="section-title">ZIPF'S LAW<br>AND THE LONG TAIL</h2>
+
+  <div class="grid-2">
+    <div class="card card-black">
+      <div class="section-label" style="color:var(--yellow)">CORE IDEA</div>
+      <p style="font-size:15px;line-height:2;color:rgba(255,255,255,0.95);">
+        Frequency is inversely proportional to rank:<br>
+        <strong style="color:var(--green);">f ∝ 1 / r</strong><br>
+        or approximately <strong style="color:var(--blue);">f × r = constant</strong>
+      </p>
+      <p style="font-size:14px;line-height:1.8;color:rgba(255,255,255,0.75);margin-top:12px;">
+        Few words are extremely common. Most words are rare.
+      </p>
+    </div>
+    <div class="card card-yellow">
+      <div class="section-label">NLP IMPACT</div>
+      <p style="font-size:14px;line-height:1.9;">
+        Advantages: common words are easy to model, stopword filtering helps efficiency.<br><br>
+        Challenges: rare words have limited training data, causing sparsity issues.
+      </p>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:20px;">
+    <div class="section-label">VISUAL (RANK VS FREQUENCY)</div>
+    <canvas id="zipf-canvas" width="1000" height="320"></canvas>
+  </div>
+</section>
+
+<section class="section" id="flashcards" style="background:var(--black);color:var(--white);">
+  <div class="section-label" style="color:var(--yellow)">06 — RECALL</div>
+  <h2 class="section-title" style="color:var(--white);">FLASH<br>CARDS</h2>
+  <p style="font-family:'Syne',sans-serif;font-size:16px;color:rgba(245,240,232,0.6);margin-bottom:40px;">Click card to flip. Use arrows to browse Week 1 terms.</p>
+
+  <div class="fc-container">
+    <div class="fc-wrapper" onclick="flipCard()" id="fc-wrapper">
+      <div class="fc-inner" id="fc-inner">
+        <div class="fc-front">
+          <div class="fc-term" id="fc-term">NLP</div>
+          <div class="fc-hint">CLICK TO REVEAL DEFINITION</div>
+        </div>
+        <div class="fc-back">
+          <div class="fc-def" id="fc-def">Field that enables machines to process and understand human language.</div>
+        </div>
+      </div>
+    </div>
+    <div class="fc-controls">
+      <button class="fc-ctrl-btn" onclick="prevCard()">← PREV</button>
+      <div class="fc-progress" id="fc-progress">1 / 10</div>
+      <button class="fc-ctrl-btn" onclick="nextCard()">NEXT →</button>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="quiz">
+  <div class="section-label">07 — TEST YOURSELF</div>
+  <h2 class="section-title">QUICK<br>QUIZ</h2>
+
+  <div class="score-bar" id="score-bar"></div>
+
+  <div class="quiz-card" id="quiz-card">
+    <span class="q-number" id="q-num">QUESTION 1 / 8</span>
+    <div class="q-text" id="q-text"></div>
+    <div class="q-options" id="q-options"></div>
+    <div class="q-feedback" id="q-feedback"></div>
+    <button class="next-btn" id="next-btn" onclick="nextQuestion()">NEXT QUESTION →</button>
+  </div>
+</section>
+
+<footer>
+  <div class="f-logo">NLP WEEK 1</div>
+  <div class="f-note">NPTEL · INTRODUCTION · AMBIGUITY · CORPUS STATISTICS · ZIPF'S LAW</div>
+</footer>
+
+<script>
+const cursor = document.getElementById('cursor');
+document.addEventListener('mousemove', e => {
+  cursor.style.left = e.clientX + 'px';
+  cursor.style.top = e.clientY + 'px';
+});
+document.querySelectorAll('button,input,a,.card,.fc-wrapper,.pill').forEach(el => {
+  el.addEventListener('mouseenter', () => cursor.classList.add('big'));
+  el.addEventListener('mouseleave', () => cursor.classList.remove('big'));
+});
+
+function scrollToSec(sel) {
+  const el = document.querySelector(sel);
+  if (el) el.scrollIntoView({behavior:'smooth'});
+}
+
+const sections = ['intro','ambiguity','challenges','stats','zipf','flashcards','quiz'];
+const navBtns = document.querySelectorAll('.nav-btn');
+window.addEventListener('scroll', () => {
+  let cur = '';
+  sections.forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.getBoundingClientRect().top < 200) cur = id;
+  });
+  navBtns.forEach((b,i) => b.classList.toggle('active', sections[i] === cur));
+});
+
+function showAmb(type) {
+  document.querySelectorAll('.amb-panel').forEach(p => p.classList.remove('show'));
+  document.querySelectorAll('.amb-btn').forEach(b => b.classList.remove('on'));
+  document.getElementById('amb-'+type).classList.add('show');
+  if (event && event.target) event.target.classList.add('on');
+}
+
+function drawZipf() {
+  const canvas = document.getElementById('zipf-canvas');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width;
+  const h = canvas.height;
+
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#f5f0e8';
+  ctx.fillRect(0, 0, w, h);
+
+  const pad = 60;
+  ctx.strokeStyle = '#0a0a0a';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(pad, pad / 2);
+  ctx.lineTo(pad, h - pad);
+  ctx.lineTo(w - pad / 2, h - pad);
+  ctx.stroke();
+
+  ctx.fillStyle = '#0a0a0a';
+  ctx.font = '700 14px Space Mono';
+  ctx.fillText('FREQUENCY', 14, 30);
+  ctx.fillText('RANK', w - 100, h - 18);
+
+  ctx.strokeStyle = '#FF2D55';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  for (let r = 1; r <= 60; r++) {
+    const x = pad + (r - 1) * ((w - pad * 1.5) / 59);
+    const f = 1 / r;
+    const y = (h - pad) - (f * (h - pad * 1.5));
+    if (r === 1) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  ctx.fillStyle = '#FFE600';
+  for (let r = 1; r <= 60; r += 3) {
+    const x = pad + (r - 1) * ((w - pad * 1.5) / 59);
+    const f = 1 / r;
+    const y = (h - pad) - (f * (h - pad * 1.5));
+    ctx.beginPath();
+    ctx.arc(x, y, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#0a0a0a';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+}
+
+const cards = [
+  {term:'NLP',def:'Field that enables machines to process and understand human language.'},
+  {term:'LEXICAL AMBIGUITY',def:'A single word has multiple meanings depending on context.'},
+  {term:'STRUCTURAL AMBIGUITY',def:'The same sentence can have more than one parse structure.'},
+  {term:'SEMANTIC AMBIGUITY',def:'A sentence allows multiple interpretations even with fixed words.'},
+  {term:'TYPE',def:'Unique word form in a corpus.'},
+  {term:'TOKEN',def:'Every occurrence of a word in text.'},
+  {term:'TTR',def:'Type-Token Ratio = number of types / number of tokens.'},
+  {term:'HAPAX LEGOMENA',def:'Words that occur exactly once in a corpus.'},
+  {term:'ZIPF\'S LAW',def:'Word frequency is inversely related to rank (f ∝ 1/r).'},
+  {term:'FUNCTION WORDS',def:'High-frequency grammatical words like the, of, to, and.'}
+];
+let fcIdx = 0;
+let fcFlipped = false;
+function updateCard() {
+  document.getElementById('fc-term').textContent = cards[fcIdx].term;
+  document.getElementById('fc-def').textContent = cards[fcIdx].def;
+  document.getElementById('fc-progress').textContent = `${fcIdx + 1} / ${cards.length}`;
+  document.getElementById('fc-inner').classList.remove('flipped');
+  fcFlipped = false;
+}
+function flipCard() {
+  fcFlipped = !fcFlipped;
+  document.getElementById('fc-inner').classList.toggle('flipped', fcFlipped);
+}
+function nextCard() {
+  fcIdx = (fcIdx + 1) % cards.length;
+  updateCard();
+}
+function prevCard() {
+  fcIdx = (fcIdx - 1 + cards.length) % cards.length;
+  updateCard();
+}
+
+const questions = [
+  {q:'What does NLP primarily aim to do?',opts:['Compile programming languages','Process and understand human language','Create only chatbots','Replace databases'],ans:1,exp:'NLP focuses on understanding and generating natural human language.'},
+  {q:'Which is an example of structural ambiguity?',opts:['"set" has many meanings','"The man saw the boy with the binoculars"','"gr8" in texting','"the" as stopword'],ans:1,exp:'That sentence allows multiple parse structures and interpretations.'},
+  {q:'In "cat cat dog", how many types are there?',opts:['1','2','3','4'],ans:1,exp:'Types are unique words: {cat, dog} = 2.'},
+  {q:'Type-Token Ratio (TTR) equals:',opts:['Tokens / Types','Types / Tokens','Types + Tokens','Tokens - Types'],ans:1,exp:'TTR is computed as Types divided by Tokens.'},
+  {q:'Hapax legomena are words that occur:',opts:['Twice','Exactly once','In every sentence','Only in poetry'],ans:1,exp:'Hapax legomena are words appearing exactly one time in a corpus.'},
+  {q:'Zipf\'s Law suggests frequency is roughly proportional to:',opts:['Rank','1 / Rank','Rank squared','Text length'],ans:1,exp:'Zipf observed an inverse relation between frequency and rank.'},
+  {q:'Function words usually belong to a:',opts:['Fast-growing open class','Closed class','Numeric class','Domain-specific class'],ans:1,exp:'Function words are mostly from a closed class with few new additions.'},
+  {q:'Which is a major challenge in NLP?',opts:['No ambiguity in language','Language is always deterministic','Ambiguity and context dependence','Lack of text data'],ans:2,exp:'Ambiguity and context dependence are core reasons NLP is difficult.'}
+];
+
+let qIdx = 0;
+let qAnswered = false;
+const qResults = [];
+
+function initQuiz() {
+  const bar = document.getElementById('score-bar');
+  bar.innerHTML = questions.map((_,i)=>`<div class="score-dot" id="dot-${i}"></div>`).join('');
+  renderQuestion();
+}
+
+function renderQuestion() {
+  if (qIdx >= questions.length) {
+    const correct = qResults.filter(Boolean).length;
+    document.getElementById('quiz-card').innerHTML = `
+      <div style="text-align:center;">
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:84px;line-height:1;">${correct}/${questions.length}</div>
+        <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;margin:16px 0;">
+          ${correct >= 6 ? 'Strong Week 1 recall.' : 'Good attempt. Review the flashcards and retry.'}
+        </div>
+        <button class="next-btn show" style="display:inline-block;" onclick="restartQuiz()">RESTART QUIZ</button>
+      </div>`;
+    return;
+  }
+
+  const q = questions[qIdx];
+  qAnswered = false;
+  document.getElementById('q-num').textContent = `QUESTION ${qIdx + 1} / ${questions.length}`;
+  document.getElementById('q-text').textContent = q.q;
+  document.getElementById('q-options').innerHTML = q.opts.map((o,i)=>
+    `<button class="q-opt" onclick="answerQ(${i})">${String.fromCharCode(65+i)}. ${o}</button>`
+  ).join('');
+  document.getElementById('q-feedback').className = 'q-feedback';
+  document.getElementById('q-feedback').textContent = '';
+  document.getElementById('next-btn').className = 'next-btn';
+  document.getElementById('dot-' + qIdx).classList.add('done');
+}
+
+function answerQ(chosen) {
+  if (qAnswered) return;
+  qAnswered = true;
+  const q = questions[qIdx];
+  const opts = document.querySelectorAll('.q-opt');
+  opts[q.ans].classList.add('correct');
+  if (chosen !== q.ans) opts[chosen].classList.add('wrong');
+
+  const correct = chosen === q.ans;
+  qResults.push(correct);
+  const dot = document.getElementById('dot-' + qIdx);
+  dot.classList.remove('done');
+  dot.classList.add(correct ? 'correct' : 'wrong');
+
+  const fb = document.getElementById('q-feedback');
+  fb.textContent = (correct ? 'Correct. ' : 'Not quite. ') + q.exp;
+  fb.className = 'q-feedback show';
+  fb.style.background = correct ? '#f0ffe8' : '#ffe0e0';
+
+  document.getElementById('next-btn').className = 'next-btn show';
+}
+
+function nextQuestion() {
+  qIdx++;
+  renderQuestion();
+}
+
+function restartQuiz() {
+  qIdx = 0;
+  qAnswered = false;
+  qResults.length = 0;
+  document.getElementById('quiz-card').innerHTML = `
+    <span class="q-number" id="q-num"></span>
+    <div class="q-text" id="q-text"></div>
+    <div class="q-options" id="q-options"></div>
+    <div class="q-feedback" id="q-feedback"></div>
+    <button class="next-btn" id="next-btn" onclick="nextQuestion()">NEXT QUESTION →</button>`;
+  initQuiz();
+}
+
+drawZipf();
+updateCard();
+initQuiz();
+window.addEventListener('resize', drawZipf);
+</script>
+</body>
+</html>

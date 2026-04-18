@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NLP Week 4 — HMM, Viterbi, MaxEnt & CRF</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --black: #0a0a0a;
+    --white: #f5f0e8;
+    --yellow: #FFE600;
+    --red: #FF2D55;
+    --blue: #00C8FF;
+    --green: #00FF88;
+    --purple: #BF5FFF;
+    --orange: #FF6B00;
+    --border: 3px solid var(--black);
+    --shadow: 6px 6px 0 var(--black);
+    --shadow-lg: 10px 10px 0 var(--black);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--white);
+    color: var(--black);
+    font-family: 'Space Mono', monospace;
+    overflow-x: hidden;
+    cursor: none;
+  }
+
+  .cursor {
+    position: fixed;
+    width: 20px; height: 20px;
+    background: var(--yellow);
+    border: 3px solid var(--black);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%);
+    transition: transform 0.1s, background 0.2s, width 0.2s, height 0.2s;
+  }
+  .cursor.big { width: 40px; height: 40px; background: var(--red); }
+
+  body::before {
+    content:'';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    background-size: 200px;
+    pointer-events: none;
+    z-index: 1000;
+    opacity: 0.5;
+  }
+
+  .hero {
+    min-height: 100vh;
+    background: var(--black);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 60px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,230,0,0.07) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,230,0,0.07) 1px, transparent 1px);
+    background-size: 60px 60px;
+    animation: gridMove 20s linear infinite;
+  }
+  @keyframes gridMove { from{background-position:0 0;} to{background-position:60px 60px;} }
+
+  .hero-tag {
+    font-size: 13px;
+    background: var(--yellow);
+    color: var(--black);
+    padding: 6px 14px;
+    border: var(--border);
+    border-color: var(--yellow);
+    font-weight: 700;
+    letter-spacing: 3px;
+    margin-bottom: 30px;
+    display: inline-block;
+  }
+  .hero h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(70px, 12vw, 180px);
+    color: var(--white);
+    line-height: 0.9;
+    letter-spacing: -2px;
+  }
+  .hero h1 span { color: var(--yellow); }
+  .hero-sub {
+    font-family: 'Syne', sans-serif;
+    font-size: 20px;
+    color: rgba(245,240,232,0.6);
+    margin-top: 20px;
+    max-width: 680px;
+  }
+  .hero-deco {
+    position: absolute;
+    right: -50px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 300px;
+    color: rgba(255,230,0,0.05);
+    pointer-events: none;
+    letter-spacing: -10px;
+  }
+  .scroll-hint {
+    position: absolute;
+    bottom: 30px;
+    left: 60px;
+    color: var(--yellow);
+    font-size: 12px;
+    letter-spacing: 3px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .scroll-hint::before {
+    content:'';
+    display:block;
+    width:40px;
+    height:2px;
+    background: var(--yellow);
+  }
+
+  .marquee-wrap {
+    overflow: hidden;
+    border-top: var(--border);
+    border-bottom: var(--border);
+    background: var(--yellow);
+    padding: 14px 0;
+  }
+  .marquee-track {
+    display: flex;
+    gap: 40px;
+    white-space: nowrap;
+    animation: marquee 18s linear infinite;
+    width: max-content;
+  }
+  @keyframes marquee { from { transform:translateX(0);} to { transform:translateX(-50%);} }
+  .marquee-item {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    letter-spacing: 3px;
+    color: var(--black);
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+  .marquee-item::after { content:'◆'; font-size: 12px; }
+
+  .nav {
+    position: sticky;
+    top: 0;
+    z-index: 500;
+    background: var(--black);
+    border-bottom: var(--border);
+    border-color: var(--yellow);
+    display: flex;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .nav::-webkit-scrollbar { display:none; }
+  .nav-btn {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: rgba(245,240,232,0.5);
+    padding: 16px 24px;
+    border: none;
+    background: transparent;
+    cursor: none;
+    white-space: nowrap;
+    border-right: 1px solid rgba(255,230,0,0.2);
+    text-transform: uppercase;
+  }
+  .nav-btn:hover, .nav-btn.active { color: var(--yellow); background: rgba(255,230,0,0.08); }
+
+  .section {
+    padding: 80px 60px;
+    border-bottom: var(--border);
+    position: relative;
+  }
+  .section-label {
+    font-size: 11px;
+    letter-spacing: 4px;
+    color: var(--red);
+    font-weight: 700;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+  }
+  .section-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(42px, 6vw, 80px);
+    line-height: 1;
+    margin-bottom: 36px;
+    letter-spacing: 1px;
+  }
+
+  .card {
+    background: var(--white);
+    border: var(--border);
+    box-shadow: var(--shadow);
+    padding: 28px;
+    transition: transform 0.15s, box-shadow 0.15s;
+    position: relative;
+  }
+  .card:hover { transform: translate(-3px, -3px); box-shadow: 9px 9px 0 var(--black); }
+  .card-yellow { background: var(--yellow); }
+  .card-red { background: var(--red); color: var(--white); }
+  .card-blue { background: var(--blue); }
+  .card-green { background: var(--green); }
+  .card-black { background: var(--black); color: var(--white); }
+
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .grid-auto { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
+
+  .algo-tabs {
+    display: flex;
+    border: var(--border);
+    width: fit-content;
+    margin-bottom: 24px;
+  }
+  .algo-btn {
+    font-family: 'Syne', sans-serif;
+    font-size: 15px;
+    font-weight: 800;
+    padding: 14px 26px;
+    border: none;
+    border-right: var(--border);
+    background: var(--white);
+    cursor: none;
+  }
+  .algo-btn:last-child { border-right: none; }
+  .algo-btn.on { background: var(--black); color: var(--yellow); }
+  .algo-panel { display:none; }
+  .algo-panel.show { display:block; }
+
+  .formula {
+    background: var(--black);
+    color: var(--green);
+    padding: 20px;
+    border: var(--border);
+    font-size: 14px;
+    line-height: 1.8;
+    overflow-x: auto;
+  }
+
+  .beam-box {
+    border: var(--border);
+    background: var(--white);
+    padding: 18px;
+    margin-top: 12px;
+  }
+  .beam-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+  }
+  .beam-item {
+    padding: 8px 12px;
+    border: var(--border);
+    font-size: 12px;
+    background: var(--blue);
+    font-weight: 700;
+  }
+
+  .fc-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+  }
+  .fc-wrapper {
+    width: 100%;
+    max-width: 600px;
+    height: 280px;
+    perspective: 1000px;
+    cursor: none;
+  }
+  .fc-inner {
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+    transition: transform 0.6s cubic-bezier(0.34,1.56,0.64,1);
+    position: relative;
+  }
+  .fc-inner.flipped { transform: rotateY(180deg); }
+  .fc-front, .fc-back {
+    position: absolute;
+    inset: 0;
+    border: 3px solid var(--yellow);
+    box-shadow: 8px 8px 0 var(--yellow);
+    backface-visibility: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    text-align: center;
+  }
+  .fc-front { background: var(--black); }
+  .fc-back { background: var(--yellow); color: var(--black); transform: rotateY(180deg); }
+  .fc-term { font-family: 'Bebas Neue', sans-serif; font-size: 42px; letter-spacing: 2px; line-height: 1.1; }
+  .fc-def { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; line-height: 1.4; }
+  .fc-hint { font-size: 12px; opacity: 0.5; letter-spacing: 2px; margin-top: 20px; text-transform: uppercase; }
+  .fc-controls { display: flex; gap: 12px; align-items: center; }
+  .fc-ctrl-btn {
+    padding: 10px 18px;
+    border: var(--border);
+    background: var(--white);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    cursor: none;
+  }
+  .fc-progress {
+    border: var(--border);
+    padding: 8px 14px;
+    font-weight: 700;
+    background: var(--yellow);
+  }
+
+  #quiz { background: var(--yellow); }
+  .quiz-card {
+    background: var(--white);
+    border: var(--border);
+    box-shadow: var(--shadow-lg);
+    padding: 40px;
+    max-width: 760px;
+    margin: 0 auto;
+  }
+  .q-text { font-family: 'Syne', sans-serif; font-size: 22px; font-weight: 700; margin-bottom: 30px; line-height: 1.4; }
+  .q-number { font-family: 'Bebas Neue', sans-serif; font-size: 14px; letter-spacing: 3px; color: var(--red); margin-bottom: 10px; display: block; }
+  .q-options { display: flex; flex-direction: column; gap: 12px; }
+  .q-opt {
+    font-family: 'Space Mono', monospace;
+    font-size: 15px;
+    padding: 16px 20px;
+    border: var(--border);
+    background: var(--white);
+    cursor: none;
+    text-align: left;
+    font-weight: 700;
+  }
+  .q-opt:hover { background: var(--black); color: var(--yellow); }
+  .q-opt.correct { background: var(--green) !important; color: var(--black) !important; }
+  .q-opt.wrong { background: var(--red) !important; color: white !important; }
+  .q-feedback { margin-top: 20px; padding: 20px; border: var(--border); font-size: 14px; line-height: 1.6; display: none; }
+  .q-feedback.show { display: block; }
+  .next-btn {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 24px;
+    letter-spacing: 2px;
+    padding: 14px 40px;
+    background: var(--black);
+    color: var(--yellow);
+    border: var(--border);
+    cursor: none;
+    margin-top: 20px;
+    display: none;
+  }
+  .next-btn.show { display: inline-block; }
+
+  .score-bar { display: flex; gap: 8px; margin-bottom: 20px; justify-content: center; }
+  .score-dot { width: 20px; height: 20px; border: var(--border); background: var(--white); }
+  .score-dot.done { background: var(--black); }
+  .score-dot.correct { background: var(--green); }
+  .score-dot.wrong { background: var(--red); }
+
+  footer {
+    background: var(--black);
+    border-top: var(--border);
+    border-color: var(--yellow);
+    padding: 40px 60px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 20px;
+  }
+  footer .f-logo { font-family: 'Bebas Neue', sans-serif; font-size: 32px; color: var(--yellow); letter-spacing: 2px; }
+  footer .f-note { font-size: 12px; opacity: 0.4; letter-spacing: 2px; color: var(--white); }
+
+  @media (max-width: 768px) {
+    .hero, .section { padding: 40px 24px; }
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    .scroll-hint { left: 24px; }
+    footer { padding: 30px 24px; }
+    .algo-tabs { flex-wrap: wrap; }
+  }
+</style>
+</head>
+<body>
+<div class="cursor" id="cursor"></div>
+
+<section class="hero" id="top">
+  <div class="hero-grid"></div>
+  <div class="hero-tag">NPTEL · NLP · WEEK 4</div>
+  <h1>HMM<br><span>DECODING</span><br>& SEQUENCE<br>MODELS</h1>
+  <p class="hero-sub">Week 4 covers HMM decoding with Viterbi, parameter learning via Baum-Welch and Forward-Backward, then discriminative sequence models: MaxEnt and CRF.</p>
+  <div class="hero-deco">W4</div>
+  <div class="scroll-hint">SCROLL TO EXPLORE</div>
+</section>
+
+<div class="marquee-wrap">
+  <div class="marquee-track">
+    <span class="marquee-item">VITERBI</span>
+    <span class="marquee-item">DELTA & PSI</span>
+    <span class="marquee-item">FORWARD-BACKWARD</span>
+    <span class="marquee-item">BAUM-WELCH</span>
+    <span class="marquee-item">MAXIMUM ENTROPY</span>
+    <span class="marquee-item">BEAM SEARCH</span>
+    <span class="marquee-item">LABEL BIAS</span>
+    <span class="marquee-item">CRF</span>
+    <span class="marquee-item">VITERBI</span>
+    <span class="marquee-item">DELTA & PSI</span>
+    <span class="marquee-item">FORWARD-BACKWARD</span>
+    <span class="marquee-item">BAUM-WELCH</span>
+    <span class="marquee-item">MAXIMUM ENTROPY</span>
+    <span class="marquee-item">BEAM SEARCH</span>
+    <span class="marquee-item">LABEL BIAS</span>
+    <span class="marquee-item">CRF</span>
+  </div>
+</div>
+
+<nav class="nav" id="main-nav">
+  <button class="nav-btn active" onclick="scrollToSec('#hmm')">01 HMM & VITERBI</button>
+  <button class="nav-btn" onclick="scrollToSec('#learning')">02 LEARNING</button>
+  <button class="nav-btn" onclick="scrollToSec('#maxent')">03 MAXENT</button>
+  <button class="nav-btn" onclick="scrollToSec('#beam')">04 BEAM SEARCH</button>
+  <button class="nav-btn" onclick="scrollToSec('#compare')">05 HMM VS CRF</button>
+  <button class="nav-btn" onclick="scrollToSec('#flashcards')">06 FLASHCARDS</button>
+  <button class="nav-btn" onclick="scrollToSec('#quiz')">07 QUIZ</button>
+</nav>
+
+<section class="section" id="hmm">
+  <div class="section-label">01 — DECODING</div>
+  <h2 class="section-title">HMM TAGGING<br>AND VITERBI</h2>
+
+  <div class="grid-2">
+    <div class="card card-black">
+      <div class="section-label" style="color:var(--yellow)">TASK</div>
+      <p style="line-height:1.9;font-size:14px;color:rgba(255,255,255,0.9);">Given words w1...wn, find best hidden tag sequence t1...tn. Naive search is exponential, so we use Dynamic Programming.</p>
+      <div class="formula" style="margin-top:12px;">delta_j(t+1) = max_i [ delta_i(t) * a_ij * b_j(w_{t+1}) ]</div>
+    </div>
+    <div class="card card-yellow">
+      <div class="section-label">TABLES</div>
+      <p style="line-height:1.9;font-size:14px;">delta stores best probability ending in state j at time t. psi stores best predecessor for backtrace.</p>
+      <p style="line-height:1.9;font-size:14px;margin-top:10px;">Final path = argmax at last time step + follow psi backward.</p>
+    </div>
+  </div>
+
+  <div class="grid-3" style="margin-top:20px;">
+    <div class="card card-red"><div class="section-label" style="color:rgba(255,255,255,0.75)">WHY VITERBI</div><p style="line-height:1.8;font-size:14px;">Turns huge combinatorial search into polynomial-time decoding.</p></div>
+    <div class="card card-blue"><div class="section-label">USES</div><p style="line-height:1.8;font-size:14px;">POS tagging, speech recognition, bio-sequence labeling.</p></div>
+    <div class="card card-green"><div class="section-label">LIMITS</div><p style="line-height:1.8;font-size:14px;">Unknown words and limited context hurt plain Markov taggers.</p></div>
+  </div>
+</section>
+
+<section class="section" id="learning">
+  <div class="section-label">02 — PARAMETER ESTIMATION</div>
+  <h2 class="section-title">SUPERVISED<br>AND BAUM-WELCH</h2>
+
+  <div class="algo-tabs">
+    <button class="algo-btn on" onclick="showAlgo('sup')">SUPERVISED</button>
+    <button class="algo-btn" onclick="showAlgo('bw')">BAUM-WELCH</button>
+    <button class="algo-btn" onclick="showAlgo('fb')">FORWARD-BACKWARD</button>
+  </div>
+
+  <div class="algo-panel show" id="algo-sup">
+    <div class="grid-2">
+      <div class="card card-blue">
+        <div class="section-label">WHEN TAGGED DATA EXISTS</div>
+        <div class="formula">P(tj|ti) = Count(ti->tj)/Count(ti)
+P(w|t) = Count(t emits w)/Count(t)</div>
+      </div>
+      <div class="card">
+        <div class="section-label">MLE</div>
+        <p style="line-height:1.8;font-size:14px;">Direct count-based estimation for transition and emission probabilities.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="algo-panel" id="algo-bw">
+    <div class="grid-2">
+      <div class="card card-yellow">
+        <div class="section-label">EM LOOP</div>
+        <p style="line-height:1.8;font-size:14px;">Initialize A, B, pi -> estimate hidden expectations -> re-estimate parameters -> repeat until convergence.</p>
+      </div>
+      <div class="card card-black">
+        <div class="section-label" style="color:var(--green)">STATE POSTERIORS</div>
+        <div class="formula">gamma_i(t) = P(X_t=i | Y,theta)
+zeta_ij(t) = P(X_t=i, X_t+1=j | Y,theta)</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="algo-panel" id="algo-fb">
+    <div class="grid-2">
+      <div class="card card-green">
+        <div class="section-label">FORWARD</div>
+        <div class="formula">alpha_i(t) = P(y1...yt, X_t=i | theta)
+alpha_j(t+1) = b_j(y_t+1) * sum_i alpha_i(t)a_ij</div>
+      </div>
+      <div class="card card-red">
+        <div class="section-label" style="color:rgba(255,255,255,0.75)">BACKWARD</div>
+        <div class="formula" style="color:#fff">beta_i(t) = P(y_t+1...y_T | X_t=i,theta)
+beta_i(t) = sum_j beta_j(t+1)a_ijb_j(y_t+1)</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="maxent">
+  <div class="section-label">03 — DISCRIMINATIVE TAGGING</div>
+  <h2 class="section-title">MAXIMUM<br>ENTROPY</h2>
+
+  <div class="grid-2">
+    <div class="card card-black">
+      <div class="section-label" style="color:var(--yellow)">PROBABILITY MODEL</div>
+      <div class="formula">p(y|x) = (1/Z(x)) * exp(sum_i lambda_i f_i(x,y))</div>
+      <p style="margin-top:14px;line-height:1.8;font-size:14px;color:rgba(255,255,255,0.9);">Feature functions can include capitalization, suffixes, nearby words, and previous tags.</p>
+    </div>
+    <div class="card card-yellow">
+      <div class="section-label">MAX ENTROPY PRINCIPLE</div>
+      <p style="line-height:1.9;font-size:14px;">Among distributions satisfying known constraints, choose maximum entropy. Use only supported evidence; assume nothing extra.</p>
+      <div class="formula" style="margin-top:12px;">H(p) = - sum_x p(x) log p(x)</div>
+    </div>
+  </div>
+
+  <div class="grid-auto" style="margin-top:20px;">
+    <div class="card">Feature: word is capitalized AND tag=NNP</div>
+    <div class="card card-blue">Feature: suffix=ing AND tag=VBG</div>
+    <div class="card card-green">Feature: previous word=the AND tag=Adj</div>
+    <div class="card card-red">Feature: prev tag=Det AND current tag=Adj</div>
+  </div>
+</section>
+
+<section class="section" id="beam">
+  <div class="section-label">04 — APPROXIMATE DECODING</div>
+  <h2 class="section-title">BEAM SEARCH</h2>
+
+  <div class="card card-blue">
+    <div class="section-label">IDEA</div>
+    <p style="line-height:1.9;font-size:14px;">At each step, keep only top-k candidate tag sequences. Expand only these, prune the rest. Great speed-accuracy tradeoff.</p>
+  </div>
+
+  <div class="beam-box">
+    <div class="section-label">TOY EXAMPLE (k=2)</div>
+    <div style="font-size:13px;line-height:1.8;">Sentence: "the light book"</div>
+    <div class="beam-row" id="beam-step1"></div>
+    <div class="beam-row" id="beam-step2"></div>
+    <div class="beam-row" id="beam-step3"></div>
+    <button class="algo-btn" style="margin-top:14px;border:var(--border);" onclick="runBeamDemo()">RUN DEMO</button>
+  </div>
+</section>
+
+<section class="section" id="compare">
+  <div class="section-label">05 — MODEL COMPARISON</div>
+  <h2 class="section-title">HMM vs MAXENT<br>vs CRF</h2>
+
+  <div class="grid-3">
+    <div class="card card-yellow">
+      <div class="section-label">HMM</div>
+      <p style="line-height:1.8;font-size:14px;">Generative model with transition and emission probabilities.</p>
+    </div>
+    <div class="card card-blue">
+      <div class="section-label">MAXENT</div>
+      <p style="line-height:1.8;font-size:14px;">Discriminative with rich features, but local normalization can cause label bias.</p>
+    </div>
+    <div class="card card-green">
+      <div class="section-label">CRF</div>
+      <p style="line-height:1.8;font-size:14px;">Globally normalized discriminative sequence model; alleviates label bias.</p>
+    </div>
+  </div>
+
+  <div class="card card-black" style="margin-top:20px;">
+    <div class="section-label" style="color:var(--red)">LABEL BIAS PROBLEM</div>
+    <p style="line-height:1.9;font-size:14px;color:rgba(255,255,255,0.9);">Locally normalized models can overly prefer states with fewer outgoing transitions. CRFs compare complete paths globally to reduce this bias.</p>
+  </div>
+</section>
+
+<section class="section" id="flashcards" style="background:var(--black);color:var(--white);">
+  <div class="section-label" style="color:var(--yellow)">06 — RECALL</div>
+  <h2 class="section-title" style="color:var(--white);">FLASH<br>CARDS</h2>
+  <p style="font-family:'Syne',sans-serif;font-size:16px;color:rgba(245,240,232,0.6);margin-bottom:40px;">Click card to flip. Use arrows to browse Week 4 terms.</p>
+
+  <div class="fc-container">
+    <div class="fc-wrapper" onclick="flipCard()">
+      <div class="fc-inner" id="fc-inner">
+        <div class="fc-front">
+          <div class="fc-term" id="fc-term">VITERBI</div>
+          <div class="fc-hint">CLICK TO REVEAL DEFINITION</div>
+        </div>
+        <div class="fc-back">
+          <div class="fc-def" id="fc-def">DP algorithm to find most probable hidden state sequence in HMM.</div>
+        </div>
+      </div>
+    </div>
+    <div class="fc-controls">
+      <button class="fc-ctrl-btn" onclick="prevCard()">← PREV</button>
+      <div class="fc-progress" id="fc-progress">1 / 10</div>
+      <button class="fc-ctrl-btn" onclick="nextCard()">NEXT →</button>
+    </div>
+  </div>
+</section>
+
+<section class="section" id="quiz">
+  <div class="section-label">07 — TEST YOURSELF</div>
+  <h2 class="section-title">QUICK<br>QUIZ</h2>
+
+  <div class="score-bar" id="score-bar"></div>
+  <div class="quiz-card" id="quiz-card">
+    <span class="q-number" id="q-num"></span>
+    <div class="q-text" id="q-text"></div>
+    <div class="q-options" id="q-options"></div>
+    <div class="q-feedback" id="q-feedback"></div>
+    <button class="next-btn" id="next-btn" onclick="nextQuestion()">NEXT QUESTION →</button>
+  </div>
+</section>
+
+<footer>
+  <div class="f-logo">NLP WEEK 4</div>
+  <div class="f-note">VITERBI · BAUM-WELCH · MAXENT · BEAM SEARCH · CRF</div>
+</footer>
+
+<script>
+const cursor = document.getElementById('cursor');
+document.addEventListener('mousemove', e => {
+  cursor.style.left = e.clientX + 'px';
+  cursor.style.top = e.clientY + 'px';
+});
+document.querySelectorAll('button,input,.card,.fc-wrapper').forEach(el => {
+  el.addEventListener('mouseenter', () => cursor.classList.add('big'));
+  el.addEventListener('mouseleave', () => cursor.classList.remove('big'));
+});
+
+function scrollToSec(sel) {
+  const el = document.querySelector(sel);
+  if (el) el.scrollIntoView({behavior:'smooth'});
+}
+
+const sections = ['hmm','learning','maxent','beam','compare','flashcards','quiz'];
+const navBtns = document.querySelectorAll('.nav-btn');
+window.addEventListener('scroll', () => {
+  let cur = '';
+  sections.forEach(id => {
+    const el = document.getElementById(id);
+    if (el && el.getBoundingClientRect().top < 200) cur = id;
+  });
+  navBtns.forEach((b,i) => b.classList.toggle('active', sections[i] === cur));
+});
+
+function showAlgo(id) {
+  document.querySelectorAll('.algo-panel').forEach(p => p.classList.remove('show'));
+  document.querySelectorAll('.algo-btn').forEach(b => b.classList.remove('on'));
+  document.getElementById('algo-' + id).classList.add('show');
+  if (event && event.target) event.target.classList.add('on');
+}
+
+function runBeamDemo() {
+  const s1 = document.getElementById('beam-step1');
+  const s2 = document.getElementById('beam-step2');
+  const s3 = document.getElementById('beam-step3');
+  s1.innerHTML = '<span class="beam-item">the/DET (0.92)</span><span class="beam-item">the/NOUN (0.05)</span>';
+  setTimeout(() => {
+    s2.innerHTML = '<span class="beam-item">DET ADJ (0.51)</span><span class="beam-item">DET NOUN (0.43)</span>';
+  }, 250);
+  setTimeout(() => {
+    s3.innerHTML = '<span class="beam-item" style="background:var(--green);">DET ADJ NOUN (0.34) BEST</span><span class="beam-item">DET NOUN VERB (0.11)</span>';
+  }, 500);
+}
+
+const cards = [
+  {term:'VITERBI',def:'Dynamic programming decoding for most probable hidden sequence.'},
+  {term:'DELTA TABLE',def:'Stores best score reaching each state at each position.'},
+  {term:'PSI TABLE',def:'Stores best predecessor state for backtracking.'},
+  {term:'BAUM-WELCH',def:'EM method for unsupervised HMM parameter estimation.'},
+  {term:'FORWARD-BACKWARD',def:'Computes state/posterior expectations used in re-estimation.'},
+  {term:'MAXENT',def:'Discriminative model p(tag|context) with feature functions.'},
+  {term:'FEATURE FUNCTION',def:'Indicator capturing a context-label pattern, weighted in MaxEnt.'},
+  {term:'BEAM SEARCH',def:'Approximate decoding by keeping top-k partial paths.'},
+  {term:'LABEL BIAS',def:'Local normalization bias in per-state models.'},
+  {term:'CRF',def:'Globally normalized discriminative sequence model.'}
+];
+let fcIdx = 0;
+let fcFlipped = false;
+function updateCard() {
+  document.getElementById('fc-term').textContent = cards[fcIdx].term;
+  document.getElementById('fc-def').textContent = cards[fcIdx].def;
+  document.getElementById('fc-progress').textContent = `${fcIdx + 1} / ${cards.length}`;
+  document.getElementById('fc-inner').classList.remove('flipped');
+  fcFlipped = false;
+}
+function flipCard() {
+  fcFlipped = !fcFlipped;
+  document.getElementById('fc-inner').classList.toggle('flipped', fcFlipped);
+}
+function nextCard() { fcIdx = (fcIdx + 1) % cards.length; updateCard(); }
+function prevCard() { fcIdx = (fcIdx - 1 + cards.length) % cards.length; updateCard(); }
+
+const questions = [
+  {q:'Viterbi algorithm is used to:',opts:['Train embeddings','Find best hidden tag sequence','Compute BLEU score','Build tokenizers'],ans:1,exp:'Viterbi decodes the most probable state sequence in HMM.'},
+  {q:'delta_j(t) stores:',opts:['Random prior','Best path probability ending at state j, time t','Tag dictionary count','Feature entropy'],ans:1,exp:'delta keeps optimal partial path score at each state/time.'},
+  {q:'Baum-Welch is primarily for:',opts:['Supervised estimation','Unsupervised HMM learning','Tokenization','Parsing with CFG'],ans:1,exp:'Baum-Welch is EM for HMMs without labeled states.'},
+  {q:'Forward-backward is used to compute:',opts:['Only word frequencies','Expected hidden-state statistics','Only transition matrix rank','Beam width'],ans:1,exp:'It computes expectations like gamma and zeta.'},
+  {q:'Maximum Entropy models are:',opts:['Generative','Discriminative','Rule-only','Lexicon-free'],ans:1,exp:'MaxEnt directly models p(y|x) discriminatively.'},
+  {q:'Beam search keeps:',opts:['All sequences','Only shortest sequence','Top-k candidates at each step','Only unigram tags'],ans:2,exp:'Beam search prunes to top-k partial hypotheses.'},
+  {q:'Label bias problem is associated with:',opts:['Global normalization','Local normalization','No normalization','Character models only'],ans:1,exp:'Local normalization can bias decisions across states.'},
+  {q:'CRF improves over local MaxEnt sequence tagging by:',opts:['Using no features','Global path normalization','Ignoring context','Forcing trigram tags'],ans:1,exp:'CRF uses global normalization across full sequence paths.'}
+];
+
+let qIdx = 0;
+let qAnswered = false;
+const qResults = [];
+
+function initQuiz() {
+  document.getElementById('score-bar').innerHTML = questions.map((_,i)=>`<div class="score-dot" id="dot-${i}"></div>`).join('');
+  renderQuestion();
+}
+
+function renderQuestion() {
+  if (qIdx >= questions.length) {
+    const correct = qResults.filter(Boolean).length;
+    document.getElementById('quiz-card').innerHTML = `
+      <div style="text-align:center;">
+        <div style="font-family:'Bebas Neue',sans-serif;font-size:84px;line-height:1;">${correct}/${questions.length}</div>
+        <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;margin:16px 0;">${correct >= 6 ? 'Strong Week 4 grasp.' : 'Good attempt. Review and retry.'}</div>
+        <button class="next-btn show" style="display:inline-block;" onclick="restartQuiz()">RESTART QUIZ</button>
+      </div>`;
+    return;
+  }
+  const q = questions[qIdx];
+  qAnswered = false;
+  document.getElementById('q-num').textContent = `QUESTION ${qIdx + 1} / ${questions.length}`;
+  document.getElementById('q-text').textContent = q.q;
+  document.getElementById('q-options').innerHTML = q.opts.map((o,i)=>`<button class="q-opt" onclick="answerQ(${i})">${String.fromCharCode(65+i)}. ${o}</button>`).join('');
+  document.getElementById('q-feedback').className = 'q-feedback';
+  document.getElementById('q-feedback').textContent = '';
+  document.getElementById('next-btn').className = 'next-btn';
+  document.getElementById('dot-'+qIdx).classList.add('done');
+}
+
+function answerQ(chosen) {
+  if (qAnswered) return;
+  qAnswered = true;
+  const q = questions[qIdx];
+  const opts = document.querySelectorAll('.q-opt');
+  opts[q.ans].classList.add('correct');
+  if (chosen !== q.ans) opts[chosen].classList.add('wrong');
+  const correct = chosen === q.ans;
+  qResults.push(correct);
+
+  const dot = document.getElementById('dot-'+qIdx);
+  dot.classList.remove('done');
+  dot.classList.add(correct ? 'correct' : 'wrong');
+
+  const fb = document.getElementById('q-feedback');
+  fb.textContent = (correct ? 'Correct. ' : 'Not quite. ') + q.exp;
+  fb.className = 'q-feedback show';
+  fb.style.background = correct ? '#f0ffe8' : '#ffe0e0';
+
+  document.getElementById('next-btn').className = 'next-btn show';
+}
+
+function nextQuestion() { qIdx++; renderQuestion(); }
+
+function restartQuiz() {
+  qIdx = 0;
+  qAnswered = false;
+  qResults.length = 0;
+  document.getElementById('quiz-card').innerHTML = `
+    <span class="q-number" id="q-num"></span>
+    <div class="q-text" id="q-text"></div>
+    <div class="q-options" id="q-options"></div>
+    <div class="q-feedback" id="q-feedback"></div>
+    <button class="next-btn" id="next-btn" onclick="nextQuestion()">NEXT QUESTION →</button>`;
+  initQuiz();
+}
+
+updateCard();
+initQuiz();
+</script>
+</body>
+</html>

@@ -1,0 +1,1815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NLP Week 2 — Spelling Correction & Edit Distance</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Space+Mono:ital,wght@0,400;0,700;1,400&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --black: #0a0a0a;
+    --white: #f5f0e8;
+    --yellow: #FFE600;
+    --red: #FF2D55;
+    --blue: #00C8FF;
+    --green: #00FF88;
+    --purple: #BF5FFF;
+    --orange: #FF6B00;
+    --border: 3px solid var(--black);
+    --shadow: 6px 6px 0 var(--black);
+    --shadow-lg: 10px 10px 0 var(--black);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--white);
+    color: var(--black);
+    font-family: 'Space Mono', monospace;
+    overflow-x: hidden;
+    cursor: none;
+  }
+
+  /* CUSTOM CURSOR */
+  .cursor {
+    position: fixed;
+    width: 20px; height: 20px;
+    background: var(--yellow);
+    border: 3px solid var(--black);
+    border-radius: 50%;
+    pointer-events: none;
+    z-index: 9999;
+    transform: translate(-50%, -50%);
+    transition: transform 0.1s, background 0.2s, width 0.2s, height 0.2s;
+  }
+  .cursor.big {
+    width: 40px; height: 40px;
+    background: var(--red);
+  }
+
+  /* NOISE OVERLAY */
+  body::before {
+    content:'';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+    background-size: 200px;
+    pointer-events: none;
+    z-index: 1000;
+    opacity: 0.5;
+  }
+
+  /* HERO */
+  .hero {
+    min-height: 100vh;
+    background: var(--black);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    padding: 60px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .hero-grid {
+    position: absolute;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(255,230,0,0.07) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255,230,0,0.07) 1px, transparent 1px);
+    background-size: 60px 60px;
+    animation: gridMove 20s linear infinite;
+  }
+  @keyframes gridMove {
+    0% { background-position: 0 0; }
+    100% { background-position: 60px 60px; }
+  }
+
+  .hero-tag {
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    background: var(--yellow);
+    color: var(--black);
+    padding: 6px 14px;
+    border: var(--border);
+    border-color: var(--yellow);
+    font-weight: 700;
+    letter-spacing: 3px;
+    margin-bottom: 30px;
+    display: inline-block;
+    animation: tagPop 0.5s ease 0.3s both;
+  }
+  @keyframes tagPop {
+    from { opacity:0; transform: translateX(-30px); }
+    to { opacity:1; transform: translateX(0); }
+  }
+
+  .hero h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(70px, 12vw, 180px);
+    color: var(--white);
+    line-height: 0.9;
+    letter-spacing: -2px;
+    position: relative;
+    z-index: 2;
+    animation: titleDrop 0.8s cubic-bezier(0.34,1.56,0.64,1) 0.5s both;
+  }
+  @keyframes titleDrop {
+    from { opacity:0; transform: translateY(-60px); }
+    to { opacity:1; transform: translateY(0); }
+  }
+
+  .hero h1 span {
+    color: var(--yellow);
+    display: inline-block;
+    animation: wobble 3s ease-in-out infinite;
+  }
+  @keyframes wobble {
+    0%,100% { transform: rotate(-1deg); }
+    50% { transform: rotate(1deg); }
+  }
+
+  .hero-sub {
+    font-family: 'Syne', sans-serif;
+    font-size: 20px;
+    color: rgba(245,240,232,0.6);
+    margin-top: 20px;
+    max-width: 500px;
+    animation: fadeUp 0.8s ease 0.9s both;
+  }
+  @keyframes fadeUp {
+    from { opacity:0; transform: translateY(20px); }
+    to { opacity:1; transform: translateY(0); }
+  }
+
+  .hero-deco {
+    position: absolute;
+    right: -50px;
+    top: 50%;
+    transform: translateY(-50%);
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 300px;
+    color: rgba(255,230,0,0.05);
+    pointer-events: none;
+    letter-spacing: -10px;
+    animation: decoFloat 6s ease-in-out infinite;
+  }
+  @keyframes decoFloat {
+    0%,100% { transform: translateY(-50%) rotate(-5deg); }
+    50% { transform: translateY(-52%) rotate(-3deg); }
+  }
+
+  .scroll-hint {
+    position: absolute;
+    bottom: 30px;
+    left: 60px;
+    color: var(--yellow);
+    font-size: 12px;
+    letter-spacing: 3px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  .scroll-hint::before {
+    content:'';
+    display:block;
+    width:40px; height:2px;
+    background: var(--yellow);
+  }
+
+  /* NAV */
+  .nav {
+    position: sticky;
+    top: 0;
+    z-index: 500;
+    background: var(--black);
+    border-bottom: var(--border);
+    border-color: var(--yellow);
+    display: flex;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .nav::-webkit-scrollbar { display:none; }
+  .nav-btn {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: rgba(245,240,232,0.5);
+    padding: 16px 24px;
+    border: none;
+    background: transparent;
+    cursor: none;
+    white-space: nowrap;
+    transition: all 0.2s;
+    border-right: 1px solid rgba(255,230,0,0.2);
+    text-transform: uppercase;
+  }
+  .nav-btn:hover, .nav-btn.active {
+    color: var(--yellow);
+    background: rgba(255,230,0,0.08);
+  }
+
+  /* SECTIONS */
+  .section {
+    padding: 80px 60px;
+    border-bottom: var(--border);
+    position: relative;
+  }
+
+  .section-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 4px;
+    color: var(--red);
+    font-weight: 700;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+  }
+
+  .section-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(42px, 6vw, 80px);
+    line-height: 1;
+    margin-bottom: 40px;
+    letter-spacing: 1px;
+  }
+
+  /* BRUTALIST CARD */
+  .card {
+    background: var(--white);
+    border: var(--border);
+    box-shadow: var(--shadow);
+    padding: 28px;
+    transition: transform 0.15s, box-shadow 0.15s;
+    position: relative;
+  }
+  .card:hover {
+    transform: translate(-3px, -3px);
+    box-shadow: 9px 9px 0 var(--black);
+  }
+
+  .card-yellow { background: var(--yellow); }
+  .card-red { background: var(--red); color: var(--white); }
+  .card-blue { background: var(--blue); }
+  .card-green { background: var(--green); }
+  .card-black { background: var(--black); color: var(--white); }
+
+  /* GRID LAYOUTS */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+  .grid-auto { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+
+  /* ===== SECTION 1: SPELL TYPES ===== */
+  #spell-types { background: var(--white); }
+
+  .error-type-toggle {
+    display: flex;
+    gap: 0;
+    margin-bottom: 40px;
+    border: var(--border);
+    width: fit-content;
+  }
+  .toggle-btn {
+    font-family: 'Syne', sans-serif;
+    font-size: 16px;
+    font-weight: 800;
+    padding: 16px 40px;
+    border: none;
+    cursor: none;
+    background: var(--white);
+    transition: all 0.2s;
+    border-right: var(--border);
+  }
+  .toggle-btn:last-child { border-right: none; }
+  .toggle-btn.on { background: var(--black); color: var(--yellow); }
+
+  .error-demo-box {
+    display: none;
+    animation: fadeIn 0.3s ease;
+  }
+  .error-demo-box.show { display: block; }
+  @keyframes fadeIn { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+
+  .word-badge {
+    display: inline-block;
+    font-family: 'Space Mono', monospace;
+    font-size: 18px;
+    padding: 8px 16px;
+    border: var(--border);
+    margin: 6px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+  }
+  .word-badge:hover { transform: translate(-2px,-2px); box-shadow: 4px 4px 0 var(--black); }
+  .word-badge.wrong { background: var(--red); color: white; text-decoration: line-through; }
+  .word-badge.right { background: var(--green); }
+  .word-badge.context-wrong { background: var(--orange); }
+
+  /* ===== SECTION 2: EDIT DISTANCE INTERACTIVE ===== */
+  #edit-distance { background: #f0ece0; }
+
+  .ed-inputs {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 30px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .ed-input-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .ed-input-wrapper label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+  }
+  .ed-input {
+    font-family: 'Space Mono', monospace;
+    font-size: 20px;
+    font-weight: 700;
+    padding: 14px 20px;
+    border: var(--border);
+    background: var(--white);
+    color: var(--black);
+    width: 200px;
+    box-shadow: var(--shadow);
+    outline: none;
+    text-transform: lowercase;
+  }
+  .ed-input:focus { background: var(--yellow); }
+
+  .compute-btn {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 24px;
+    letter-spacing: 2px;
+    padding: 14px 40px;
+    background: var(--black);
+    color: var(--yellow);
+    border: var(--border);
+    cursor: none;
+    box-shadow: var(--shadow);
+    transition: all 0.15s;
+    align-self: flex-end;
+  }
+  .compute-btn:hover { transform: translate(-3px,-3px); box-shadow: 9px 9px 0 var(--black); }
+  .compute-btn:active { transform: translate(3px,3px); box-shadow: 3px 3px 0 var(--black); }
+
+  .dp-table-container {
+    overflow-x: auto;
+    margin-top: 30px;
+  }
+
+  #dp-table {
+    border-collapse: collapse;
+    font-family: 'Space Mono', monospace;
+    font-size: 15px;
+    min-width: 100%;
+  }
+  #dp-table td, #dp-table th {
+    border: var(--border);
+    width: 50px;
+    height: 50px;
+    text-align: center;
+    font-weight: 700;
+    transition: background 0.3s;
+    position: relative;
+  }
+  #dp-table th { background: var(--black); color: var(--yellow); }
+  #dp-table td { background: var(--white); }
+  #dp-table td.highlight { background: var(--yellow); }
+  #dp-table td.path { background: var(--green); }
+  #dp-table td.final { background: var(--red); color: white; font-size: 20px; }
+
+  .ed-result {
+    margin-top: 20px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+  .ed-distance-badge {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 60px;
+    background: var(--red);
+    color: white;
+    padding: 10px 30px;
+    border: var(--border);
+    box-shadow: var(--shadow);
+    line-height: 1;
+  }
+  .ed-ops-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .op-badge {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    padding: 6px 12px;
+    border: var(--border);
+    font-weight: 700;
+  }
+  .op-insert { background: var(--blue); }
+  .op-delete { background: var(--red); color: white; }
+  .op-sub { background: var(--orange); }
+  .op-match { background: var(--green); }
+
+  .cost-controls {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin: 20px 0;
+  }
+  .cost-ctrl {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .cost-ctrl label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+  .cost-slider {
+    -webkit-appearance: none;
+    width: 150px;
+    height: 8px;
+    background: var(--black);
+    outline: none;
+    border: 2px solid var(--black);
+  }
+  .cost-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    background: var(--yellow);
+    border: var(--border);
+    cursor: none;
+  }
+  .cost-val {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    background: var(--yellow);
+    border: var(--border);
+    padding: 2px 10px;
+    width: fit-content;
+  }
+
+  /* ===== SECTION 3: OPERATIONS VIZ ===== */
+  #operations { background: var(--black); color: var(--white); }
+  #operations .section-title { color: var(--yellow); }
+
+  .ops-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 20px;
+  }
+  .op-card {
+    border: 3px solid;
+    padding: 30px 24px;
+    position: relative;
+    overflow: hidden;
+    cursor: none;
+    transition: transform 0.15s;
+  }
+  .op-card:hover { transform: translate(-4px,-4px); }
+  .op-card .op-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 36px;
+    margin-bottom: 10px;
+  }
+  .op-card .op-example {
+    font-family: 'Space Mono', monospace;
+    font-size: 14px;
+    opacity: 0.8;
+    margin-bottom: 16px;
+  }
+  .op-card .op-visual {
+    font-family: 'Space Mono', monospace;
+    font-size: 20px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .op-card .char-box {
+    display: inline-block;
+    padding: 6px 10px;
+    border: 2px solid currentColor;
+    font-size: 18px;
+    transition: all 0.3s;
+    min-width: 34px;
+    text-align: center;
+  }
+  .op-card .char-box.highlight-char {
+    background: var(--yellow);
+    color: var(--black);
+    border-color: var(--yellow);
+    transform: scale(1.2);
+  }
+  .op-card .char-box.deleted {
+    background: var(--red);
+    text-decoration: line-through;
+    opacity: 0.6;
+  }
+  .op-card .char-box.inserted {
+    background: var(--green);
+    color: var(--black);
+  }
+
+  .op-ins { border-color: #00FF88; }
+  .op-del { border-color: #FF2D55; }
+  .op-rep { border-color: #FFE600; }
+  .op-tra { border-color: #BF5FFF; }
+
+  .animate-btn {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    padding: 10px 20px;
+    background: transparent;
+    border: 2px solid currentColor;
+    color: inherit;
+    cursor: none;
+    margin-top: 16px;
+    transition: all 0.15s;
+    text-transform: uppercase;
+  }
+  .animate-btn:hover { background: rgba(255,255,255,0.1); }
+
+  /* ===== SECTION 4: NOISY CHANNEL ===== */
+  #noisy-channel { background: #fff8f0; }
+
+  .nc-formula {
+    background: var(--black);
+    color: var(--green);
+    padding: 30px 40px;
+    font-family: 'Space Mono', monospace;
+    font-size: clamp(14px, 2.5vw, 22px);
+    border: var(--border);
+    box-shadow: var(--shadow-lg);
+    margin: 30px 0;
+    text-align: center;
+    line-height: 1.8;
+    position: relative;
+    overflow: hidden;
+  }
+  .nc-formula::before {
+    content: 'BAYES RULE';
+    position: absolute;
+    top: 10px;
+    right: 20px;
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: rgba(0,255,136,0.4);
+  }
+
+  .nc-demo {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 20px;
+    align-items: start;
+    margin: 40px 0;
+  }
+  .nc-arrow {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-top: 40px;
+    font-size: 40px;
+  }
+  .nc-input-word {
+    font-family: 'Space Mono', monospace;
+    font-size: 18px;
+    padding: 14px 20px;
+    border: var(--border);
+    background: var(--white);
+    width: 100%;
+    box-shadow: var(--shadow);
+    outline: none;
+  }
+  .nc-input-word:focus { background: var(--yellow); }
+  .nc-candidates {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 20px;
+  }
+  .nc-candidate {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 20px;
+    border: var(--border);
+    background: var(--white);
+    cursor: none;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+  .nc-candidate:hover { transform: translate(-2px,-2px); box-shadow: var(--shadow); }
+  .nc-candidate.winner {
+    background: var(--green);
+    transform: translate(-3px,-3px);
+    box-shadow: var(--shadow);
+  }
+  .nc-candidate .cword {
+    font-family: 'Syne', sans-serif;
+    font-size: 18px;
+    font-weight: 800;
+    flex: 1;
+  }
+  .nc-candidate .cbar {
+    height: 8px;
+    background: var(--black);
+    transition: width 0.6s cubic-bezier(0.34,1.56,0.64,1);
+  }
+  .nc-candidate .cscore {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    min-width: 60px;
+    text-align: right;
+  }
+
+  /* ===== SECTION 5: QUIZ ===== */
+  #quiz { background: var(--yellow); }
+  #quiz .section-title { color: var(--black); }
+
+  .quiz-card {
+    background: var(--white);
+    border: var(--border);
+    box-shadow: var(--shadow-lg);
+    padding: 40px;
+    max-width: 700px;
+    margin: 0 auto;
+  }
+  .q-text {
+    font-family: 'Syne', sans-serif;
+    font-size: 22px;
+    font-weight: 700;
+    margin-bottom: 30px;
+    line-height: 1.4;
+  }
+  .q-number {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 14px;
+    letter-spacing: 3px;
+    color: var(--red);
+    margin-bottom: 10px;
+    display: block;
+  }
+  .q-options {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .q-opt {
+    font-family: 'Space Mono', monospace;
+    font-size: 15px;
+    padding: 16px 20px;
+    border: var(--border);
+    background: var(--white);
+    cursor: none;
+    text-align: left;
+    transition: all 0.15s;
+    font-weight: 700;
+  }
+  .q-opt:hover { background: var(--black); color: var(--yellow); transform: translate(-2px,-2px); box-shadow: var(--shadow); }
+  .q-opt.correct { background: var(--green) !important; color: var(--black) !important; }
+  .q-opt.wrong { background: var(--red) !important; color: white !important; }
+  .q-feedback {
+    margin-top: 20px;
+    padding: 20px;
+    border: var(--border);
+    font-family: 'Space Mono', monospace;
+    font-size: 14px;
+    line-height: 1.6;
+    display: none;
+  }
+  .q-feedback.show { display: block; background: #f0ffe8; }
+  .next-btn {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 24px;
+    letter-spacing: 2px;
+    padding: 14px 40px;
+    background: var(--black);
+    color: var(--yellow);
+    border: var(--border);
+    cursor: none;
+    box-shadow: var(--shadow);
+    margin-top: 20px;
+    display: none;
+    transition: all 0.15s;
+  }
+  .next-btn.show { display: inline-block; }
+  .next-btn:hover { transform: translate(-3px,-3px); box-shadow: 9px 9px 0 var(--black); }
+
+  .score-bar {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 20px;
+  }
+  .score-dot {
+    width: 20px; height: 20px;
+    border: var(--border);
+    background: var(--white);
+    transition: background 0.3s;
+  }
+  .score-dot.done { background: var(--black); }
+  .score-dot.correct { background: var(--green); }
+  .score-dot.wrong { background: var(--red); }
+
+  /* ===== SECTION 6: ALGO VISUALIZER ===== */
+  #algo-vis { background: var(--white); }
+
+  .algo-selector {
+    display: flex;
+    gap: 0;
+    border: var(--border);
+    width: fit-content;
+    margin-bottom: 30px;
+  }
+  .algo-btn {
+    font-family: 'Syne', sans-serif;
+    font-size: 15px;
+    font-weight: 800;
+    padding: 14px 28px;
+    border: none;
+    border-right: var(--border);
+    background: var(--white);
+    cursor: none;
+    transition: all 0.15s;
+  }
+  .algo-btn:last-child { border-right: none; }
+  .algo-btn.active { background: var(--black); color: var(--yellow); }
+
+  .algo-content { display: none; animation: fadeIn 0.3s ease; }
+  .algo-content.active { display: block; }
+
+  .steps-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .step-item {
+    display: flex;
+    gap: 0;
+    cursor: none;
+  }
+  .step-num {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 28px;
+    width: 60px;
+    min-height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--black);
+    color: var(--yellow);
+    border: var(--border);
+    border-bottom: none;
+    flex-shrink: 0;
+  }
+  .step-item:last-child .step-num { border-bottom: var(--border); }
+  .step-body {
+    border: var(--border);
+    border-left: none;
+    border-bottom: none;
+    padding: 16px 24px;
+    flex: 1;
+    font-size: 15px;
+    line-height: 1.6;
+    transition: background 0.2s;
+  }
+  .step-item:last-child .step-body { border-bottom: var(--border); }
+  .step-item:hover .step-body { background: var(--yellow); }
+  .step-title {
+    font-family: 'Syne', sans-serif;
+    font-weight: 800;
+    font-size: 16px;
+    margin-bottom: 4px;
+  }
+
+  /* ===== FLASHCARDS ===== */
+  #flashcards { background: var(--black); color: var(--white); }
+  #flashcards .section-title { color: var(--white); }
+
+  .fc-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+  }
+  .fc-wrapper {
+    width: 100%;
+    max-width: 600px;
+    height: 280px;
+    perspective: 1000px;
+    cursor: none;
+  }
+  .fc-inner {
+    width: 100%;
+    height: 100%;
+    transform-style: preserve-3d;
+    transition: transform 0.6s cubic-bezier(0.34,1.56,0.64,1);
+    position: relative;
+  }
+  .fc-inner.flipped { transform: rotateY(180deg); }
+  .fc-front, .fc-back {
+    position: absolute;
+    inset: 0;
+    border: 3px solid var(--yellow);
+    box-shadow: 8px 8px 0 var(--yellow);
+    backface-visibility: hidden;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    text-align: center;
+  }
+  .fc-front { background: var(--black); }
+  .fc-back { background: var(--yellow); color: var(--black); transform: rotateY(180deg); }
+  .fc-term {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 42px;
+    letter-spacing: 2px;
+    line-height: 1.1;
+  }
+  .fc-hint {
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    opacity: 0.5;
+    letter-spacing: 2px;
+    margin-top: 20px;
+    text-transform: uppercase;
+  }
+  .fc-def {
+    font-family: 'Syne', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1.5;
+  }
+  .fc-controls {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+  }
+  .fc-ctrl-btn {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 20px;
+    letter-spacing: 2px;
+    padding: 12px 30px;
+    border: 3px solid var(--yellow);
+    background: transparent;
+    color: var(--yellow);
+    cursor: none;
+    transition: all 0.15s;
+  }
+  .fc-ctrl-btn:hover { background: var(--yellow); color: var(--black); }
+  .fc-progress {
+    font-family: 'Space Mono', monospace;
+    font-size: 14px;
+    color: rgba(245,240,232,0.5);
+  }
+
+  /* FOOTER */
+  footer {
+    background: var(--black);
+    color: var(--white);
+    padding: 40px 60px;
+    border-top: 3px solid var(--yellow);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 20px;
+  }
+  footer .f-logo {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 32px;
+    color: var(--yellow);
+    letter-spacing: 2px;
+  }
+  footer .f-note {
+    font-size: 12px;
+    opacity: 0.4;
+    letter-spacing: 2px;
+  }
+
+  /* SCROLLBAR */
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: var(--black); }
+  ::-webkit-scrollbar-thumb { background: var(--yellow); border: 2px solid var(--black); }
+
+  /* RESPONSIVE */
+  @media (max-width: 768px) {
+    .hero, .section { padding: 40px 24px; }
+    .grid-2, .grid-3 { grid-template-columns: 1fr; }
+    .nc-demo { grid-template-columns: 1fr; }
+    .nc-arrow { display: none; }
+    .ed-input { width: 140px; }
+    footer { padding: 30px 24px; }
+    .scroll-hint { left: 24px; }
+  }
+
+  /* MARQUEE */
+  .marquee-wrap {
+    overflow: hidden;
+    border-top: var(--border);
+    border-bottom: var(--border);
+    background: var(--yellow);
+    padding: 14px 0;
+  }
+  .marquee-track {
+    display: flex;
+    gap: 40px;
+    white-space: nowrap;
+    animation: marquee 18s linear infinite;
+    width: max-content;
+  }
+  @keyframes marquee { from{transform:translateX(0)} to{transform:translateX(-50%)} }
+  .marquee-item {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 22px;
+    letter-spacing: 3px;
+    color: var(--black);
+    display: flex;
+    align-items: center;
+    gap: 20px;
+  }
+  .marquee-item::after { content:'◆'; font-size: 12px; }
+
+  /* NUMBER BIG */
+  .big-stat {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 100px;
+    line-height: 1;
+    color: var(--yellow);
+    border: var(--border);
+    border-color: var(--yellow);
+    padding: 20px 40px;
+    display: inline-block;
+    background: var(--black);
+  }
+</style>
+</head>
+<body>
+
+<div class="cursor" id="cursor"></div>
+
+<!-- HERO -->
+<section class="hero" id="top">
+  <div class="hero-grid"></div>
+  <div class="hero-tag">NPTEL · NLP · WEEK 2</div>
+  <h1>SPELL<br><span>CHECK</span><br>& EDIT<br>DISTANCE</h1>
+  <p class="hero-sub">An interactive deep-dive into spelling correction algorithms, edit distance metrics, and the Noisy Channel Model.</p>
+  <div class="hero-deco">W2</div>
+  <div class="scroll-hint">SCROLL TO EXPLORE</div>
+</section>
+
+<!-- MARQUEE -->
+<div class="marquee-wrap">
+  <div class="marquee-track">
+    <span class="marquee-item">LEVENSHTEIN DISTANCE</span>
+    <span class="marquee-item">DYNAMIC PROGRAMMING</span>
+    <span class="marquee-item">NOISY CHANNEL MODEL</span>
+    <span class="marquee-item">EDIT OPERATIONS</span>
+    <span class="marquee-item">DAMERAU DISTANCE</span>
+    <span class="marquee-item">TRIE STRUCTURE</span>
+    <span class="marquee-item">CONFUSION MATRIX</span>
+    <span class="marquee-item">CANDIDATE GENERATION</span>
+    <span class="marquee-item">LEVENSHTEIN DISTANCE</span>
+    <span class="marquee-item">DYNAMIC PROGRAMMING</span>
+    <span class="marquee-item">NOISY CHANNEL MODEL</span>
+    <span class="marquee-item">EDIT OPERATIONS</span>
+    <span class="marquee-item">DAMERAU DISTANCE</span>
+    <span class="marquee-item">TRIE STRUCTURE</span>
+    <span class="marquee-item">CONFUSION MATRIX</span>
+    <span class="marquee-item">CANDIDATE GENERATION</span>
+  </div>
+</div>
+
+<!-- NAV -->
+<nav class="nav" id="main-nav">
+  <button class="nav-btn active" onclick="scrollTo('#spell-types')">01 ERROR TYPES</button>
+  <button class="nav-btn" onclick="scrollTo('#operations')">02 OPERATIONS</button>
+  <button class="nav-btn" onclick="scrollTo('#edit-distance')">03 LIVE DP TABLE</button>
+  <button class="nav-btn" onclick="scrollTo('#algo-vis')">04 ALGORITHMS</button>
+  <button class="nav-btn" onclick="scrollTo('#noisy-channel')">05 NOISY CHANNEL</button>
+  <button class="nav-btn" onclick="scrollTo('#flashcards')">06 FLASHCARDS</button>
+  <button class="nav-btn" onclick="scrollTo('#quiz')">07 QUIZ</button>
+</nav>
+
+<!-- ===== SECTION 1: ERROR TYPES ===== -->
+<section class="section" id="spell-types">
+  <div class="section-label">01 — FUNDAMENTALS</div>
+  <h2 class="section-title">SPELLING<br>ERROR TYPES</h2>
+
+  <div class="error-type-toggle">
+    <button class="toggle-btn on" onclick="showErrorType('nonword')">NON-WORD ERRORS</button>
+    <button class="toggle-btn" onclick="showErrorType('realword')">REAL-WORD ERRORS</button>
+  </div>
+
+  <div class="error-demo-box show" id="demo-nonword">
+    <div class="grid-2">
+      <div class="card card-yellow">
+        <div class="section-label">WHAT IS IT?</div>
+        <p style="font-family:'Syne',sans-serif;font-size:18px;font-weight:700;line-height:1.6;margin-top:10px;">
+          The typed word does <strong>NOT exist</strong> in any dictionary. Easy to detect — just look it up!
+        </p>
+        <div style="margin-top:20px;font-size:13px;font-family:'Space Mono',monospace;opacity:0.6;">DETECTION METHOD: Dictionary Lookup</div>
+      </div>
+      <div class="card">
+        <div class="section-label">EXAMPLES — CLICK TO SEE CORRECTION</div>
+        <div style="margin-top:16px;" id="nw-examples">
+          <span class="word-badge wrong" onclick="correctWord(this,'behalf')">behaf</span>
+          <span class="word-badge wrong" onclick="correctWord(this,'actress')">acress</span>
+          <span class="word-badge wrong" onclick="correctWord(this,'receive')">recieve</span>
+          <span class="word-badge wrong" onclick="correctWord(this,'beautiful')">beutiful</span>
+          <span class="word-badge wrong" onclick="correctWord(this,'separate')">seperate</span>
+        </div>
+        <p style="font-size:12px;font-family:'Space Mono',monospace;margin-top:16px;opacity:0.5;">↑ Click each word to see its correction</p>
+      </div>
+    </div>
+    <div class="card card-black" style="margin-top:20px;">
+      <div class="section-label" style="color:var(--green)">WHY IT MATTERS</div>
+      <div class="grid-3" style="margin-top:16px;gap:16px;">
+        <div style="font-family:'Space Mono',monospace;font-size:13px;line-height:1.6;opacity:0.8;padding:12px;border:1px solid rgba(255,255,255,0.2);">🔍 <strong>Search Engines</strong> — corrects user queries before lookup</div>
+        <div style="font-family:'Space Mono',monospace;font-size:13px;line-height:1.6;opacity:0.8;padding:12px;border:1px solid rgba(255,255,255,0.2);">📄 <strong>OCR Systems</strong> — fixes scanned text errors</div>
+        <div style="font-family:'Space Mono',monospace;font-size:13px;line-height:1.6;opacity:0.8;padding:12px;border:1px solid rgba(255,255,255,0.2);">💬 <strong>Chat Apps</strong> — real-time autocorrect</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="error-demo-box" id="demo-realword">
+    <div class="grid-2">
+      <div class="card" style="background:var(--red);color:white;">
+        <div class="section-label" style="color:rgba(255,255,255,0.7)">WHAT IS IT?</div>
+        <p style="font-family:'Syne',sans-serif;font-size:18px;font-weight:700;line-height:1.6;margin-top:10px;">
+          The typed word <strong>IS valid</strong> in the dictionary, but wrong in context. Needs understanding of surrounding words!
+        </p>
+        <div style="margin-top:20px;font-size:13px;font-family:'Space Mono',monospace;opacity:0.7;">DETECTION METHOD: Context / Language Model</div>
+      </div>
+      <div class="card">
+        <div class="section-label">EXAMPLES — SPOT THE ERROR</div>
+        <div style="margin-top:16px;">
+          <p style="font-family:'Space Mono',monospace;font-size:15px;margin-bottom:16px;line-height:2.2;">
+            I went <span class="word-badge context-wrong" title="should be: to" style="cursor:pointer;" onclick="this.style.background='var(--green)'">too</span> school.<br>
+            She found <span class="word-badge context-wrong" title="should be: peace" onclick="this.style.background='var(--green)'">piece</span> of mind.<br>
+            The knight <span class="word-badge context-wrong" title="should be: knew" onclick="this.style.background='var(--green)'">new</span> the answer.<br>
+            It was <span class="word-badge context-wrong" title="should be: there" onclick="this.style.background='var(--green)'">three</span> idea.
+          </p>
+        </div>
+        <p style="font-size:12px;font-family:'Space Mono',monospace;margin-top:4px;opacity:0.5;">↑ Click orange words to fix them</p>
+      </div>
+    </div>
+    <div class="card" style="background:var(--purple);color:white;margin-top:20px;">
+      <div class="section-label" style="color:rgba(255,255,255,0.7)">PHONETIC CONFUSION</div>
+      <p style="font-family:'Space Mono',monospace;font-size:14px;line-height:1.8;margin-top:10px;opacity:0.9;">
+        Many real-word errors arise from homophones — words that sound alike but mean different things:<br>
+        <strong>sea / see</strong> &nbsp;•&nbsp; <strong>knight / night</strong> &nbsp;•&nbsp; <strong>their / there / they're</strong> &nbsp;•&nbsp; <strong>two / too / to</strong>
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ===== SECTION 2: EDIT OPERATIONS ===== -->
+<section class="section" id="operations">
+  <div class="section-label" style="color:var(--green)">02 — CORE CONCEPTS</div>
+  <h2 class="section-title">EDIT<br>OPERATIONS</h2>
+  <p style="font-family:'Syne',sans-serif;font-size:18px;opacity:0.7;max-width:600px;margin-bottom:40px;font-weight:400;">
+    Four fundamental operations define how we measure the distance between two strings. Click ANIMATE to see each in action.
+  </p>
+
+  <div class="ops-grid">
+    <!-- INSERT -->
+    <div class="op-card op-ins" style="color:#00FF88;">
+      <div class="op-title">INSERT</div>
+      <div class="op-example">Cost: 1 &nbsp;|&nbsp; Add a character</div>
+      <div class="op-visual" id="op-ins-vis">
+        <span class="char-box">c</span><span class="char-box">a</span><span class="char-box">t</span>
+        <span style="opacity:0.5;">→</span>
+        <span class="char-box">c</span><span class="char-box">a</span><span class="char-box inserted">r</span><span class="char-box">t</span>
+      </div>
+      <button class="animate-btn" style="color:#00FF88;border-color:#00FF88;" onclick="animateOp('ins')">▶ ANIMATE</button>
+    </div>
+    <!-- DELETE -->
+    <div class="op-card op-del" style="color:#FF2D55;">
+      <div class="op-title">DELETE</div>
+      <div class="op-example">Cost: 1 &nbsp;|&nbsp; Remove a character</div>
+      <div class="op-visual" id="op-del-vis">
+        <span class="char-box">c</span><span class="char-box">a</span><span class="char-box">r</span><span class="char-box">t</span>
+        <span style="opacity:0.5;">→</span>
+        <span class="char-box">c</span><span class="char-box">a</span><span class="char-box">t</span>
+      </div>
+      <button class="animate-btn" style="color:#FF2D55;border-color:#FF2D55;" onclick="animateOp('del')">▶ ANIMATE</button>
+    </div>
+    <!-- SUBSTITUTE -->
+    <div class="op-card op-rep" style="color:#FFE600;">
+      <div class="op-title">SUBSTITUTE</div>
+      <div class="op-example">Cost: 1 or 2 &nbsp;|&nbsp; Replace a character</div>
+      <div class="op-visual" id="op-sub-vis">
+        <span class="char-box">c</span><span class="char-box">a</span><span class="char-box">t</span>
+        <span style="opacity:0.5;">→</span>
+        <span class="char-box">c</span><span class="char-box inserted" style="background:var(--yellow);color:var(--black);">u</span><span class="char-box">t</span>
+      </div>
+      <button class="animate-btn" style="color:#FFE600;border-color:#FFE600;" onclick="animateOp('sub')">▶ ANIMATE</button>
+    </div>
+    <!-- TRANSPOSE -->
+    <div class="op-card op-tra" style="color:#BF5FFF;">
+      <div class="op-title">TRANSPOSE</div>
+      <div class="op-example">Cost: 1 &nbsp;|&nbsp; Swap adjacent chars</div>
+      <div class="op-visual" id="op-tra-vis">
+        <span class="char-box" id="tc1" style="color:#BF5FFF;border-color:#BF5FFF;">t</span>
+        <span class="char-box" id="tc2" style="color:#BF5FFF;border-color:#BF5FFF;">e</span>
+        <span class="char-box" style="color:#BF5FFF;border-color:#BF5FFF;">h</span>
+        <span style="opacity:0.5;">→</span>
+        <span class="char-box" style="color:#BF5FFF;border-color:#BF5FFF;">t</span>
+        <span class="char-box" style="color:#BF5FFF;border-color:#BF5FFF;">h</span>
+        <span class="char-box" style="color:#BF5FFF;border-color:#BF5FFF;">e</span>
+      </div>
+      <div style="font-family:'Space Mono',monospace;font-size:12px;opacity:0.6;margin-top:10px;">Damerau-Levenshtein only!</div>
+      <button class="animate-btn" style="color:#BF5FFF;border-color:#BF5FFF;" onclick="animateOp('tra')">▶ ANIMATE</button>
+    </div>
+  </div>
+
+  <!-- Complexity stats -->
+  <div class="grid-3" style="margin-top:40px;gap:20px;">
+    <div class="card card-yellow">
+      <div class="section-label">TIME COMPLEXITY</div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:60px;line-height:1;margin-top:8px;">O(n·m)</div>
+      <div style="font-family:'Space Mono',monospace;font-size:13px;margin-top:8px;opacity:0.7;">n = length of source string<br>m = length of target string</div>
+    </div>
+    <div class="card card-black">
+      <div class="section-label" style="color:var(--green)">SPACE COMPLEXITY</div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:60px;line-height:1;margin-top:8px;color:var(--green);">O(n·m)</div>
+      <div style="font-family:'Space Mono',monospace;font-size:13px;margin-top:8px;opacity:0.6;color:white;">DP table has n×m cells</div>
+    </div>
+    <div class="card card-red">
+      <div class="section-label" style="color:rgba(255,255,255,0.7)">ERROR COVERAGE</div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:60px;line-height:1;margin-top:8px;color:white;">~80%</div>
+      <div style="font-family:'Space Mono',monospace;font-size:13px;margin-top:8px;opacity:0.8;color:white;">of errors within edit distance 1<br>~100% within edit distance 2</div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== SECTION 3: LIVE DP TABLE ===== -->
+<section class="section" id="edit-distance">
+  <div class="section-label">03 — INTERACTIVE TOOL</div>
+  <h2 class="section-title">LIVE DP<br>TABLE</h2>
+  <p style="font-family:'Syne',sans-serif;font-size:18px;opacity:0.7;max-width:600px;margin-bottom:30px;font-weight:400;">
+    Type two words and watch the Dynamic Programming table fill in real-time. The final cell shows minimum edit distance.
+  </p>
+
+  <div class="cost-controls">
+    <div class="cost-ctrl">
+      <label>INSERT COST</label>
+      <input type="range" class="cost-slider" id="ins-cost" min="1" max="3" value="1" oninput="updateCostVal('ins',this.value);recompute()">
+      <div class="cost-val" id="ins-val">1</div>
+    </div>
+    <div class="cost-ctrl">
+      <label>DELETE COST</label>
+      <input type="range" class="cost-slider" id="del-cost" min="1" max="3" value="1" oninput="updateCostVal('del',this.value);recompute()">
+      <div class="cost-val" id="del-val">1</div>
+    </div>
+    <div class="cost-ctrl">
+      <label>SUBSTITUTE COST</label>
+      <input type="range" class="cost-slider" id="sub-cost" min="1" max="3" value="1" oninput="updateCostVal('sub',this.value);recompute()">
+      <div class="cost-val" id="sub-val">1</div>
+    </div>
+  </div>
+
+  <div class="ed-inputs">
+    <div class="ed-input-wrapper">
+      <label>SOURCE WORD</label>
+      <input class="ed-input" id="src-word" type="text" value="kitten" maxlength="12" oninput="recompute()">
+    </div>
+    <div class="ed-input-wrapper">
+      <label>TARGET WORD</label>
+      <input class="ed-input" id="tgt-word" type="text" value="sitting" maxlength="12" oninput="recompute()">
+    </div>
+    <button class="compute-btn" onclick="animateTable()">ANIMATE FILL</button>
+  </div>
+
+  <div class="ed-result" id="ed-result" style="margin-bottom:20px;"></div>
+
+  <div class="dp-table-container">
+    <table id="dp-table"></table>
+  </div>
+
+  <div style="margin-top:20px;display:flex;gap:16px;flex-wrap:wrap;">
+    <div style="display:flex;align-items:center;gap:8px;font-family:'Space Mono',monospace;font-size:12px;">
+      <div style="width:20px;height:20px;background:var(--yellow);border:2px solid var(--black);"></div> CURRENT CELL
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;font-family:'Space Mono',monospace;font-size:12px;">
+      <div style="width:20px;height:20px;background:var(--green);border:2px solid var(--black);"></div> OPTIMAL PATH
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;font-family:'Space Mono',monospace;font-size:12px;">
+      <div style="width:20px;height:20px;background:var(--red);border:2px solid var(--black);"></div> FINAL DISTANCE
+    </div>
+  </div>
+</section>
+
+<!-- ===== SECTION 4: ALGORITHMS ===== -->
+<section class="section" id="algo-vis">
+  <div class="section-label">04 — STEP BY STEP</div>
+  <h2 class="section-title">HOW THE<br>ALGORITHMS<br>WORK</h2>
+
+  <div class="algo-selector">
+    <button class="algo-btn active" onclick="showAlgo('dp')">DP ALGORITHM</button>
+    <button class="algo-btn" onclick="showAlgo('noisy')">NOISY CHANNEL</button>
+    <button class="algo-btn" onclick="showAlgo('symdelete')">SYM DELETE</button>
+  </div>
+
+  <!-- DP -->
+  <div class="algo-content active" id="algo-dp">
+    <div class="grid-2" style="gap:30px;">
+      <div class="steps-container">
+        <div class="step-item"><div class="step-num">1</div><div class="step-body"><div class="step-title">Initialize the DP Table</div>Set D(i,0) = i for all i (deletions from source). Set D(0,j) = j for all j (insertions to build target). This handles empty string base cases.</div></div>
+        <div class="step-item"><div class="step-num">2</div><div class="step-body"><div class="step-title">Iterate Row by Row</div>For each character X[i] in source and Y[j] in target, compute D(i,j) using three possible previous states.</div></div>
+        <div class="step-item"><div class="step-num">3</div><div class="step-body"><div class="step-title">Apply Recurrence</div>D(i,j) = min of: D(i-1,j)+ins_cost (delete from source), D(i,j-1)+del_cost (insert into source), D(i-1,j-1)+sub (substitute, 0 if match).</div></div>
+        <div class="step-item"><div class="step-num">4</div><div class="step-body"><div class="step-title">Read Final Answer</div>The minimum edit distance is stored at D(n,m) — bottom-right cell of the table.</div></div>
+        <div class="step-item"><div class="step-num">5</div><div class="step-body"><div class="step-title">Backtrace for Alignment</div>Follow pointers (↖ ← ↑) backward from D(n,m) to reconstruct the actual sequence of operations performed.</div></div>
+      </div>
+      <div>
+        <div class="card card-yellow">
+          <div class="section-label">RECURRENCE FORMULA</div>
+          <pre style="font-family:'Space Mono',monospace;font-size:13px;margin-top:12px;line-height:2;background:var(--black);color:var(--green);padding:20px;border:var(--border);overflow-x:auto;">D(i,j) = min(
+  D(i-1,j) + 1,       // delete
+  D(i,j-1) + 1,       // insert
+  D(i-1,j-1) + cost   // substitute
+                       // cost=0 if X[i]=Y[j]
+)</pre>
+        </div>
+        <div class="card card-black" style="margin-top:20px;">
+          <div class="section-label" style="color:var(--blue)">BACKTRACE SYMBOLS</div>
+          <div style="font-family:'Space Mono',monospace;font-size:16px;margin-top:12px;line-height:2.5;color:white;">
+            <span style="color:var(--green)">↖</span> Match / Substitute<br>
+            <span style="color:var(--yellow)">←</span> Insertion<br>
+            <span style="color:var(--red)">↑</span> Deletion
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- NOISY CHANNEL -->
+  <div class="algo-content" id="algo-noisy">
+    <div class="grid-2" style="gap:30px;">
+      <div class="steps-container">
+        <div class="step-item"><div class="step-num">1</div><div class="step-body"><div class="step-title">Observe the Input Word x</div>The user types a word x. It may or may not be correct. We want to find the most probable intended word w.</div></div>
+        <div class="step-item"><div class="step-num">2</div><div class="step-body"><div class="step-title">Apply Bayes' Rule</div>P(w|x) ∝ P(x|w) × P(w). We decompose the problem into: how likely is the typo (error model) and how common is the word (language model).</div></div>
+        <div class="step-item"><div class="step-num">3</div><div class="step-body"><div class="step-title">Compute P(w) — Language Model</div>Estimate word frequency from a large corpus. Common words like "the", "house" get high P(w). Rare words get low P(w).</div></div>
+        <div class="step-item"><div class="step-num">4</div><div class="step-body"><div class="step-title">Compute P(x|w) — Error Model</div>Using confusion matrix, estimate how likely it is that correct word w was typed as x. Nearby keyboard keys, common transpositions get higher probability.</div></div>
+        <div class="step-item"><div class="step-num">5</div><div class="step-body"><div class="step-title">Select Best Candidate</div>argmax_w [ P(x|w) × P(w) ] → return this word as the correction.</div></div>
+      </div>
+      <div>
+        <div class="card" style="background:var(--black);padding:30px;">
+          <div class="section-label" style="color:var(--green)">THE MODEL</div>
+          <div style="font-family:'Space Mono',monospace;font-size:15px;color:var(--green);margin-top:16px;line-height:2.5;">
+            <span style="color:white;">Input word</span>  →  [Noisy Channel]  →  <span style="color:var(--yellow);">x</span><br>
+            <span style="color:rgba(255,255,255,0.5);font-size:12px;">Original intended word w gets "corrupted"</span><br><br>
+            <span style="color:white;">Find:</span> w* = argmax P(w|x)<br>
+            <span style="color:white;">Using:</span> P(w|x) ∝ P(x|w) · P(w)<br><br>
+            <span style="color:var(--blue);">P(w)</span>    = language model<br>
+            <span style="color:var(--red);">P(x|w)</span>  = error model
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SYM DELETE -->
+  <div class="algo-content" id="algo-symdelete">
+    <div class="grid-2" style="gap:30px;">
+      <div class="steps-container">
+        <div class="step-item"><div class="step-num">1</div><div class="step-body"><div class="step-title">Offline: Pre-process Dictionary</div>For every dictionary word, generate all variants by deleting up to k characters (k=1 or 2). Store word ↔ delete-variants mapping.</div></div>
+        <div class="step-item"><div class="step-num">2</div><div class="step-body"><div class="step-title">Online: Process Input Word</div>When user types a (possibly misspelled) word x, generate all its delete variants (only ~45 for length-9 word at k=2).</div></div>
+        <div class="step-item"><div class="step-num">3</div><div class="step-body"><div class="step-title">Hash Lookup</div>Look up these delete variants in the precomputed hash map. Matches correspond to dictionary words that are within edit distance k.</div></div>
+        <div class="step-item"><div class="step-num">4</div><div class="step-body"><div class="step-title">Why Only Deletes?</div>Insert(a,b) + Delete(b,a) = same word! By only precomputing deletes, we avoid storing millions of insert/substitute variants.</div></div>
+        <div class="step-item"><div class="step-num">5</div><div class="step-body"><div class="step-title">Speed Advantage</div>Naive: compare against entire 100k+ word dictionary. Symmetric Delete: lookup ~45 hash keys. Dramatically faster for real-time applications.</div></div>
+      </div>
+      <div>
+        <div class="card card-yellow">
+          <div class="section-label">CANDIDATE COUNT COMPARISON</div>
+          <div style="margin-top:16px;">
+            <div style="font-family:'Space Mono',monospace;font-size:14px;margin-bottom:16px;font-weight:700;">9-char word, edit distance ≤ 2:</div>
+            <div style="background:var(--red);color:white;padding:12px;margin-bottom:8px;border:var(--border);font-family:'Space Mono',monospace;font-size:13px;">
+              ❌ NAIVE GENERATE-ALL: ~100,000+ candidates
+            </div>
+            <div style="background:var(--green);padding:12px;border:var(--border);font-family:'Space Mono',monospace;font-size:13px;">
+              ✅ SYMMETRIC DELETE: ~45 candidates
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== SECTION 5: NOISY CHANNEL DEMO ===== -->
+<section class="section" id="noisy-channel">
+  <div class="section-label">05 — PROBABILISTIC MODEL</div>
+  <h2 class="section-title">NOISY<br>CHANNEL<br>MODEL</h2>
+
+  <div class="nc-formula">
+    w* = argmax<sub>w</sub> [ P(x | w) × P(w) ]<br>
+    <span style="font-size:0.7em;opacity:0.6;">where P(w) = language model &nbsp;|&nbsp; P(x|w) = error model</span>
+  </div>
+
+  <div class="nc-demo">
+    <div>
+      <div class="section-label">TYPE A MISSPELLED WORD</div>
+      <input class="nc-input-word" id="nc-input" type="text" placeholder="e.g. recieve" value="recieve" oninput="updateNoisyDemo()">
+      <div style="font-family:'Space Mono',monospace;font-size:12px;margin-top:10px;opacity:0.5;">Try: teh, recieve, acress, speling</div>
+    </div>
+    <div class="nc-arrow">→</div>
+    <div>
+      <div class="section-label">CANDIDATES — RANKED BY SCORE</div>
+      <div class="nc-candidates" id="nc-candidates"></div>
+    </div>
+  </div>
+
+  <div class="grid-2" style="margin-top:40px;gap:20px;">
+    <div class="card card-yellow">
+      <div class="section-label">P(w) — LANGUAGE MODEL</div>
+      <p style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;margin-top:12px;line-height:1.6;">
+        Asks: "How common is this word in normal text?"<br><br>
+        "the" ≫ "zebra" &nbsp; ∴ &nbsp; P("the") ≫ P("zebra")
+      </p>
+      <div style="margin-top:16px;font-family:'Space Mono',monospace;font-size:12px;opacity:0.6;">Estimated from large text corpora (Wikipedia, books, etc.)</div>
+    </div>
+    <div class="card card-black">
+      <div class="section-label" style="color:var(--red)">P(x|w) — ERROR MODEL</div>
+      <p style="font-family:'Syne',sans-serif;font-size:16px;font-weight:700;margin-top:12px;line-height:1.6;color:white;">
+        Asks: "How likely is this particular typo?"<br><br>
+        <span style="color:var(--green);">teh ← the</span> is very common<br>
+        <span style="color:var(--red);">xqz ← the</span> is very unlikely
+      </p>
+      <div style="margin-top:16px;font-family:'Space Mono',monospace;font-size:12px;opacity:0.5;color:white;">Uses confusion matrix + keyboard proximity data</div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== SECTION 6: FLASHCARDS ===== -->
+<section class="section" id="flashcards">
+  <div class="section-label" style="color:var(--yellow)">06 — MEMORIZE</div>
+  <h2 class="section-title" style="color:var(--white);">FLASH<br>CARDS</h2>
+  <p style="font-family:'Syne',sans-serif;font-size:16px;color:rgba(245,240,232,0.6);margin-bottom:40px;">Click card to reveal definition. Use arrows to navigate.</p>
+
+  <div class="fc-container">
+    <div class="fc-wrapper" onclick="flipCard()" id="fc-wrapper">
+      <div class="fc-inner" id="fc-inner">
+        <div class="fc-front">
+          <div class="fc-term" id="fc-term">LEVENSHTEIN DISTANCE</div>
+          <div class="fc-hint">CLICK TO REVEAL DEFINITION</div>
+        </div>
+        <div class="fc-back">
+          <div class="fc-def" id="fc-def">Edit distance where insertion, deletion, and substitution each cost 1. Most widely used form of edit distance in NLP and spell checking.</div>
+        </div>
+      </div>
+    </div>
+    <div class="fc-controls">
+      <button class="fc-ctrl-btn" onclick="prevCard()">← PREV</button>
+      <div class="fc-progress" id="fc-progress">1 / 12</div>
+      <button class="fc-ctrl-btn" onclick="nextCard()">NEXT →</button>
+    </div>
+  </div>
+</section>
+
+<!-- ===== SECTION 7: QUIZ ===== -->
+<section class="section" id="quiz">
+  <div class="section-label">07 — TEST YOURSELF</div>
+  <h2 class="section-title">QUICK<br>QUIZ</h2>
+
+  <div class="score-bar" id="score-bar"></div>
+
+  <div class="quiz-card" id="quiz-card">
+    <span class="q-number" id="q-num">QUESTION 1 / 8</span>
+    <div class="q-text" id="q-text"></div>
+    <div class="q-options" id="q-options"></div>
+    <div class="q-feedback" id="q-feedback"></div>
+    <button class="next-btn" id="next-btn" onclick="nextQuestion()">NEXT QUESTION →</button>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="f-logo">NLP WEEK 2</div>
+  <div class="f-note">NPTEL · SPELLING CORRECTION · EDIT DISTANCE · NOISY CHANNEL</div>
+</footer>
+
+<script>
+// ============ CURSOR ============
+const cursor = document.getElementById('cursor');
+document.addEventListener('mousemove', e => {
+  cursor.style.left = e.clientX + 'px';
+  cursor.style.top = e.clientY + 'px';
+});
+document.querySelectorAll('button,input,a,.card,.word-badge,.fc-wrapper,.nc-candidate').forEach(el => {
+  el.addEventListener('mouseenter', () => cursor.classList.add('big'));
+  el.addEventListener('mouseleave', () => cursor.classList.remove('big'));
+});
+
+// ============ NAV SCROLL ============
+function scrollTo(sel) {
+  document.querySelector(sel).scrollIntoView({behavior:'smooth'});
+}
+
+// Active nav tracking
+const sections = ['spell-types','operations','edit-distance','algo-vis','noisy-channel','flashcards','quiz'];
+const navBtns = document.querySelectorAll('.nav-btn');
+window.addEventListener('scroll', () => {
+  let cur = '';
+  sections.forEach(id => {
+    const el = document.getElementById(id);
+    if(el && el.getBoundingClientRect().top < 200) cur = id;
+  });
+  navBtns.forEach((b,i) => b.classList.toggle('active', sections[i] === cur));
+});
+
+// ============ ERROR TYPE TOGGLE ============
+function showErrorType(type) {
+  document.querySelectorAll('.error-demo-box').forEach(d=>d.classList.remove('show'));
+  document.querySelectorAll('.toggle-btn').forEach(b=>b.classList.remove('on'));
+  document.getElementById('demo-'+type).classList.add('show');
+  event.target.classList.add('on');
+}
+
+function correctWord(el, correct) {
+  el.classList.remove('wrong');
+  el.classList.add('right');
+  el.textContent = correct;
+  el.onclick = null;
+}
+
+// ============ DP EDIT DISTANCE ============
+let insC=1,delC=1,subC=1;
+function updateCostVal(type, val) {
+  document.getElementById(type+'-val').textContent = val;
+  if(type==='ins') insC=+val;
+  if(type==='del') delC=+val;
+  if(type==='sub') subC=+val;
+}
+
+function computeDP(s, t) {
+  const n=s.length, m=t.length;
+  const D = Array.from({length:n+1},(_,i)=>Array.from({length:m+1},(_,j)=>j===0?i:0));
+  for(let j=0;j<=m;j++) D[0][j]=j;
+  const ops = Array.from({length:n+1},()=>Array(m+1).fill(''));
+  for(let i=1;i<=n;i++) {
+    for(let j=1;j<=m;j++) {
+      const match = s[i-1]===t[j-1];
+      const sc = match ? D[i-1][j-1] : D[i-1][j-1]+subC;
+      const dc = D[i-1][j]+delC;
+      const ic = D[i][j-1]+insC;
+      D[i][j] = Math.min(sc,dc,ic);
+      if(D[i][j]===sc) ops[i][j]='d';
+      else if(D[i][j]===dc) ops[i][j]='↑';
+      else ops[i][j]='←';
+    }
+  }
+  return {D, ops, n, m};
+}
+
+function getPath(ops, n, m) {
+  const path = new Set();
+  let i=n, j=m;
+  path.add(`${i},${j}`);
+  while(i>0||j>0) {
+    if(i===0){j--;} else if(j===0){i--;} else {
+      const op = ops[i][j];
+      if(op==='d'){i--;j--;} else if(op==='↑'){i--;} else {j--;}
+    }
+    path.add(`${i},${j}`);
+  }
+  return path;
+}
+
+function getOpsSequence(s, t, ops, D, n, m) {
+  const seq=[];
+  let i=n, j=m;
+  while(i>0||j>0) {
+    if(i===0){seq.push({type:'insert',char:t[j-1]});j--;continue;}
+    if(j===0){seq.push({type:'delete',char:s[i-1]});i--;continue;}
+    const op=ops[i][j];
+    if(op==='d'){
+      if(s[i-1]===t[j-1]) seq.push({type:'match',char:s[i-1]});
+      else seq.push({type:'substitute',from:s[i-1],to:t[j-1]});
+      i--;j--;
+    } else if(op==='↑'){seq.push({type:'delete',char:s[i-1]});i--;}
+    else {seq.push({type:'insert',char:t[j-1]});j--;}
+  }
+  return seq.reverse();
+}
+
+function renderTable(s,t,D,ops,path) {
+  const tbl=document.getElementById('dp-table');
+  let html='<tr><th></th><th style="background:var(--purple);color:white;">ε</th>';
+  for(let j=0;j<t.length;j++) html+=`<th style="background:var(--purple);color:white;">${t[j]}</th>`;
+  html+='</tr>';
+  for(let i=0;i<=s.length;i++) {
+    html+='<tr>';
+    if(i===0) html+='<th style="background:var(--purple);color:white;">ε</th>';
+    else html+=`<th style="background:var(--purple);color:white;">${s[i-1]}</th>`;
+    for(let j=0;j<=t.length;j++) {
+      const isPath=path.has(`${i},${j}`);
+      const isFinal=i===s.length&&j===t.length;
+      let cls = isFinal?'final':isPath?'path':'';
+      html+=`<td class="${cls}">${D[i][j]}</td>`;
+    }
+    html+='</tr>';
+  }
+  tbl.innerHTML=html;
+}
+
+function recompute() {
+  const s=document.getElementById('src-word').value.toLowerCase().trim();
+  const t=document.getElementById('tgt-word').value.toLowerCase().trim();
+  if(!s||!t||s.length>12||t.length>12) return;
+  const {D,ops,n,m}=computeDP(s,t);
+  const path=getPath(ops,n,m);
+  renderTable(s,t,D,ops,path);
+  const seq=getOpsSequence(s,t,ops,D,n,m);
+  const dist=D[n][m];
+  let html=`<div class="ed-distance-badge">${dist}</div><div class="ed-ops-list">`;
+  seq.forEach(op=>{
+    if(op.type==='insert') html+=`<span class="op-badge op-insert">INS ${op.char}</span>`;
+    else if(op.type==='delete') html+=`<span class="op-badge op-delete">DEL ${op.from||op.char}</span>`;
+    else if(op.type==='substitute') html+=`<span class="op-badge op-sub">${op.from}→${op.to}</span>`;
+    else html+=`<span class="op-badge op-match">= ${op.char}</span>`;
+  });
+  html+='</div>';
+  document.getElementById('ed-result').innerHTML=html;
+}
+
+let animInterval=null;
+async function animateTable() {
+  const s=document.getElementById('src-word').value.toLowerCase().trim();
+  const t=document.getElementById('tgt-word').value.toLowerCase().trim();
+  if(!s||!t) return;
+  const {D,ops,n,m}=computeDP(s,t);
+  const path=getPath(ops,n,m);
+  const tbl=document.getElementById('dp-table');
+  // render blank first
+  let html='<tr><th></th><th style="background:var(--purple);color:white;">ε</th>';
+  for(let j=0;j<t.length;j++) html+=`<th style="background:var(--purple);color:white;">${t[j]}</th>`;
+  html+='</tr>';
+  for(let i=0;i<=n;i++){
+    html+='<tr>';
+    if(i===0) html+='<th style="background:var(--purple);color:white;">ε</th>';
+    else html+=`<th style="background:var(--purple);color:white;">${s[i-1]}</th>`;
+    for(let j=0;j<=m;j++) html+=`<td id="c${i}_${j}">?</td>`;
+    html+='</tr>';
+  }
+  tbl.innerHTML=html;
+  // fill with delay
+  for(let i=0;i<=n;i++) {
+    for(let j=0;j<=m;j++) {
+      await new Promise(r=>setTimeout(r,40));
+      const cell=document.getElementById(`c${i}_${j}`);
+      if(!cell) continue;
+      cell.textContent=D[i][j];
+      cell.classList.add('highlight');
+      setTimeout(()=>{
+        cell.classList.remove('highlight');
+        const isPath=path.has(`${i},${j}`);
+        const isFinal=i===n&&j===m;
+        if(isFinal) cell.classList.add('final');
+        else if(isPath) cell.classList.add('path');
+      },100);
+    }
+  }
+  // show result
+  const dist=D[n][m];
+  document.getElementById('ed-result').innerHTML=`<div class="ed-distance-badge">${dist}</div><span style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;">Edit distance between "${s}" and "${t}"</span>`;
+}
+
+// ============ ANIMATE OPS ============
+function animateOp(type) {
+  if(type==='ins') {
+    const vis=document.getElementById('op-ins-vis');
+    vis.innerHTML='<span class="char-box">c</span><span class="char-box">a</span><span class="char-box">t</span>';
+    setTimeout(()=>{
+      vis.innerHTML='<span class="char-box">c</span><span class="char-box">a</span><span class="char-box" style="background:var(--green);transform:scale(1.3);transition:all 0.3s">r</span><span class="char-box">t</span><span style="margin-left:10px;font-size:12px;opacity:0.7;">(r inserted)</span>';
+    },400);
+  } else if(type==='del') {
+    const vis=document.getElementById('op-del-vis');
+    vis.innerHTML='<span class="char-box">c</span><span class="char-box">a</span><span class="char-box deleted" style="background:var(--red);text-decoration:line-through;opacity:0.6">r</span><span class="char-box">t</span>';
+    setTimeout(()=>{
+      vis.innerHTML='<span class="char-box">c</span><span class="char-box">a</span><span class="char-box">t</span><span style="margin-left:10px;font-size:12px;opacity:0.7;">(r deleted)</span>';
+    },600);
+  } else if(type==='sub') {
+    const vis=document.getElementById('op-sub-vis');
+    vis.innerHTML='<span class="char-box">c</span><span class="char-box" style="background:var(--red);color:white;transform:scale(1.2);transition:all 0.3s">a</span><span class="char-box">t</span>';
+    setTimeout(()=>{
+      vis.innerHTML='<span class="char-box">c</span><span class="char-box" style="background:var(--green);color:var(--black);transform:scale(1.2);transition:all 0.3s">u</span><span class="char-box">t</span><span style="margin-left:10px;font-size:12px;opacity:0.7;">(a→u)</span>';
+    },500);
+  } else if(type==='tra') {
+    const vis=document.getElementById('op-tra-vis');
+    vis.innerHTML='<span class="char-box" style="background:var(--purple);color:white">t</span><span class="char-box" style="background:var(--purple);color:white">e</span><span class="char-box">h</span>';
+    setTimeout(()=>{
+      vis.innerHTML='<span style="font-size:20px;font-weight:700;opacity:0.5;margin:0 6px;">→</span>';
+    },400);
+    setTimeout(()=>{
+      vis.innerHTML='<span class="char-box">t</span><span class="char-box" style="background:var(--green);color:var(--black)">h</span><span class="char-box" style="background:var(--green);color:var(--black)">e</span><span style="margin-left:10px;font-size:12px;opacity:0.7;">(e↔h swapped)</span>';
+    },900);
+  }
+}
+
+// ============ ALGO TABS ============
+function showAlgo(id) {
+  document.querySelectorAll('.algo-content').forEach(c=>c.classList.remove('active'));
+  document.querySelectorAll('.algo-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('algo-'+id).classList.add('active');
+  event.target.classList.add('active');
+}
+
+// ============ NOISY CHANNEL DEMO ============
+const noisyData = {
+  'recieve': [{w:'receive',pw:0.9,pxw:0.85},{w:'relieve',pw:0.5,pxw:0.3},{w:'retrieve',pw:0.4,pxw:0.2}],
+  'teh':     [{w:'the',pw:1.0,pxw:0.95},{w:'ten',pw:0.6,pxw:0.2},{w:'tea',pw:0.4,pxw:0.15}],
+  'acress':  [{w:'actress',pw:0.5,pxw:0.8},{w:'across',pw:0.7,pxw:0.5},{w:'access',pw:0.6,pxw:0.3}],
+  'speling': [{w:'spelling',pw:0.5,pxw:0.9},{w:'peeling',pw:0.3,pxw:0.2},{w:'speeding',pw:0.3,pxw:0.1}],
+  'hte':     [{w:'the',pw:1.0,pxw:0.9},{w:'hate',pw:0.4,pxw:0.2},{w:'site',pw:0.3,pxw:0.05}],
+  'wrod':    [{w:'word',pw:0.7,pxw:0.85},{w:'road',pw:0.6,pxw:0.3},{w:'wore',pw:0.3,pxw:0.1}],
+};
+
+function updateNoisyDemo() {
+  const key = document.getElementById('nc-input').value.toLowerCase().trim();
+  const candidates = noisyData[key] || generateGenericCandidates(key);
+  const scored = candidates.map(c=>({...c, score:c.pw*c.pxw}));
+  const max = Math.max(...scored.map(c=>c.score));
+  scored.sort((a,b)=>b.score-a.score);
+  const container = document.getElementById('nc-candidates');
+  container.innerHTML = scored.map((c,i)=>{
+    const barW = Math.round((c.score/max)*200);
+    const isWinner = i===0;
+    return `<div class="nc-candidate ${isWinner?'winner':''}">
+      <span class="cword">${c.w}</span>
+      <div style="flex:1;display:flex;flex-direction:column;gap:4px;">
+        <div style="font-size:10px;font-family:'Space Mono',monospace;opacity:0.6;">P(w)=${c.pw.toFixed(2)} × P(x|w)=${c.pxw.toFixed(2)}</div>
+        <div style="background:rgba(0,0,0,0.1);height:6px;width:200px;border:1px solid var(--black);">
+          <div style="height:100%;width:${barW}px;background:${isWinner?'var(--black)':'rgba(0,0,0,0.3)'};transition:width 0.6s"></div>
+        </div>
+      </div>
+      <span class="cscore">${(c.score*100).toFixed(0)}%</span>
+      ${isWinner?'<span style="font-family:Bebas Neue;font-size:14px;background:var(--black);color:var(--green);padding:2px 8px;">BEST</span>':''}
+    </div>`;
+  }).join('');
+}
+
+function generateGenericCandidates(w) {
+  return [
+    {w:w.substring(0,w.length-1),pw:0.3,pxw:0.4},
+    {w:w[0]+w,pw:0.2,pxw:0.3},
+    {w:w,pw:0.1,pxw:0.1}
+  ];
+}
+
+// ============ FLASHCARDS ============
+const cards = [
+  {term:'LEVENSHTEIN DISTANCE',def:'Edit distance where insertion, deletion, and substitution each cost 1. Most widely used form of edit distance in NLP.'},
+  {term:'NON-WORD ERROR',def:'A spelling error where the misspelled word does not appear in any dictionary. Detected by simple dictionary lookup.'},
+  {term:'REAL-WORD ERROR',def:'A spelling error where the typed word IS in the dictionary but is wrong in context (e.g., "too" instead of "to"). Requires context modeling to detect.'},
+  {term:'EDIT DISTANCE',def:'Minimum number of operations (insert, delete, substitute) needed to transform one string into another.'},
+  {term:'DYNAMIC PROGRAMMING',def:'Algorithm that solves complex problems by breaking them into overlapping subproblems. Used to efficiently compute edit distance in O(nm) time.'},
+  {term:'NOISY CHANNEL MODEL',def:'Probabilistic spelling correction model: P(w|x) ∝ P(x|w) × P(w). Combines language model with error model to find best correction.'},
+  {term:'CONFUSION MATRIX',def:'Table recording frequencies of which characters are commonly mistyped as which other characters. Used to set weighted edit costs.'},
+  {term:'DAMERAU-LEVENSHTEIN',def:'Extension of Levenshtein distance that adds transposition (swapping adjacent characters) as a 4th edit operation.'},
+  {term:'TRANSPOSITION',def:'Swapping two adjacent characters in a word. Example: "teh" → "the". A common human typing error not covered by standard Levenshtein.'},
+  {term:'SYMMETRIC DELETE',def:'Efficient spell correction that precomputes delete-variants of all dictionary words offline, then matches input delete-variants at query time.'},
+  {term:'BACKTRACE',def:'Following direction pointers (↖ ← ↑) backward through the DP table to recover the sequence of edit operations, not just the distance.'},
+  {term:'CANDIDATE GENERATION',def:'Creating a set of possible correct words from a misspelled input, using edit distance, phonetic similarity, or delete-variant matching.'},
+];
+
+let fcIdx=0, fcFlipped=false;
+function updateCard() {
+  document.getElementById('fc-term').textContent=cards[fcIdx].term;
+  document.getElementById('fc-def').textContent=cards[fcIdx].def;
+  document.getElementById('fc-progress').textContent=`${fcIdx+1} / ${cards.length}`;
+  const inner=document.getElementById('fc-inner');
+  inner.classList.remove('flipped');
+  fcFlipped=false;
+}
+function flipCard() {
+  const inner=document.getElementById('fc-inner');
+  fcFlipped=!fcFlipped;
+  inner.classList.toggle('flipped',fcFlipped);
+}
+function nextCard() {
+  fcIdx=(fcIdx+1)%cards.length;
+  updateCard();
+}
+function prevCard() {
+  fcIdx=(fcIdx-1+cards.length)%cards.length;
+  updateCard();
+}
+
+// ============ QUIZ ============
+const questions = [
+  {q:'What is the Levenshtein distance between "kitten" and "sitting"?',opts:['2','3','4','5'],ans:1,exp:'k→s (sub), e→i (sub), +g (insert) = 3 operations.'},
+  {q:'Which error type is harder to detect automatically?',opts:['Non-word errors','Real-word errors','Phonetic errors','Keyboard errors'],ans:1,exp:'Real-word errors require context understanding since the misspelled word is valid in the dictionary.'},
+  {q:'What is the time complexity of the standard DP edit distance algorithm?',opts:['O(n+m)','O(n log m)','O(nm)','O(n²)'],ans:2,exp:'The DP table has (n+1)×(m+1) cells, each computed in O(1) time → O(nm) total.'},
+  {q:'Which distance measure adds transposition as a 4th operation?',opts:['Levenshtein','Hamming','Damerau-Levenshtein','Jaccard'],ans:2,exp:'Damerau-Levenshtein extends Levenshtein with transpositions (adjacent character swaps like "teh"→"the").'},
+  {q:'In the Noisy Channel Model, what does P(w) represent?',opts:['Error probability','Language model (word frequency)','Edit distance','Confusion matrix'],ans:1,exp:'P(w) is the language model — how frequently the word w appears in normal text. Common words have higher P(w).'},
+  {q:'What is the key advantage of Symmetric Delete spelling correction?',opts:['Better accuracy','Uses fewer candidates — only deletions','Works without a dictionary','Handles real-word errors'],ans:1,exp:'Symmetric Delete only generates delete variants (~45 for length-9 words at distance 2), vs 100k+ candidates for naive generation.'},
+  {q:'About what % of spelling errors are within edit distance 1?',opts:['50%','65%','80%','95%'],ans:2,exp:'Statistics show approximately 80% of real spelling errors are within edit distance 1 of the correct word.'},
+  {q:'D(i,0) = i in the DP table represents:',opts:['Inserting i characters','Deleting i characters from source','Substituting i characters','Transposing i pairs'],ans:1,exp:'D(i,0) = i means converting the first i characters of source to an empty string requires i deletions.'},
+];
+
+let qIdx=0, qAnswered=false;
+const qResults=[];
+
+function initQuiz() {
+  const bar=document.getElementById('score-bar');
+  bar.innerHTML=questions.map((_,i)=>`<div class="score-dot" id="dot-${i}"></div>`).join('');
+  renderQuestion();
+}
+
+function renderQuestion() {
+  if(qIdx>=questions.length) {
+    const correct=qResults.filter(r=>r).length;
+    document.getElementById('quiz-card').innerHTML=`
+      <div style="text-align:center;">
+        <div class="ed-distance-badge" style="font-size:80px;">${correct}/${questions.length}</div>
+        <div style="font-family:'Syne',sans-serif;font-size:24px;font-weight:800;margin:20px 0;">
+          ${correct>=6?'🔥 Excellent! You know your NLP!':'📚 Keep studying — you got this!'}
+        </div>
+        <button class="compute-btn" onclick="restartQuiz()">RESTART QUIZ</button>
+      </div>`;
+    return;
+  }
+  const q=questions[qIdx];
+  qAnswered=false;
+  document.getElementById('q-num').textContent=`QUESTION ${qIdx+1} / ${questions.length}`;
+  document.getElementById('q-text').textContent=q.q;
+  document.getElementById('q-options').innerHTML=q.opts.map((o,i)=>
+    `<button class="q-opt" onclick="answerQ(${i})">${String.fromCharCode(65+i)}. ${o}</button>`
+  ).join('');
+  document.getElementById('q-feedback').className='q-feedback';
+  document.getElementById('q-feedback').textContent='';
+  document.getElementById('next-btn').className='next-btn';
+  document.getElementById('dot-'+qIdx).classList.add('done');
+}
+
+function answerQ(chosen) {
+  if(qAnswered) return;
+  qAnswered=true;
+  const q=questions[qIdx];
+  const opts=document.querySelectorAll('.q-opt');
+  opts[q.ans].classList.add('correct');
+  if(chosen!==q.ans) opts[chosen].classList.add('wrong');
+  const correct=chosen===q.ans;
+  qResults.push(correct);
+  const dot=document.getElementById('dot-'+qIdx);
+  dot.classList.remove('done');
+  dot.classList.add(correct?'correct':'wrong');
+  const fb=document.getElementById('q-feedback');
+  fb.textContent=(correct?'✅ Correct! ':'❌ Not quite. ')+q.exp;
+  fb.className='q-feedback show';
+  fb.style.background=correct?'#f0ffe8':'#ffe0e0';
+  document.getElementById('next-btn').className='next-btn show';
+}
+
+function nextQuestion() {
+  qIdx++;
+  renderQuestion();
+}
+
+function restartQuiz() {
+  qIdx=0; qResults.length=0; qAnswered=false;
+  document.getElementById('score-bar').innerHTML=questions.map((_,i)=>`<div class="score-dot" id="dot-${i}"></div>`).join('');
+  document.getElementById('quiz-card').innerHTML=`
+    <span class="q-number" id="q-num"></span>
+    <div class="q-text" id="q-text"></div>
+    <div class="q-options" id="q-options"></div>
+    <div class="q-feedback" id="q-feedback"></div>
+    <button class="next-btn" id="next-btn" onclick="nextQuestion()">NEXT QUESTION →</button>`;
+  renderQuestion();
+}
+
+// ============ INIT ============
+recompute();
+updateNoisyDemo();
+initQuiz();
+updateCard();
+</script>
+</body>
+</html>
